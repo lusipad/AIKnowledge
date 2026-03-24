@@ -1,0 +1,35 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-coding-memory-postgres
+    environment:
+      POSTGRES_DB: aicoding_mvp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d aicoding_mvp']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ai-coding-memory:
+    build: .
+    container_name: ai-coding-memory-mvp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '8000:8000'
+    environment:
+      AICODING_DB_URL: postgresql+psycopg://postgres:postgres@postgres:5432/aicoding_mvp
+      AICODING_VECTOR_BACKEND: pgvector
+    volumes:
+      - ./runtime:/app/runtime
+
+volumes:
+  postgres_data:
