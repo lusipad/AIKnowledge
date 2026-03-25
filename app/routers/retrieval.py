@@ -3,162 +3,30 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
-from app.models import ConfigProfile, ConversationSession, KnowledgeItem, RetrievalRequest, RetrievalResult
-from app.request_context import get_request_context
+from app.models import RetrievalRequest, RetrievalResult
 from app.schemas import RetrievalQueryRequest
-from app.services.audit import append_audit_log
-from app.services.retrieval import (
-    build_context_summary,
-    dedupe_ranked_entries,
-    order_context_sources,
-    rank_config_rules,
-    rank_knowledge_items,
-    scope_matches,
-    select_config_rules,
+from app.services.use_cases import (
+    ResourceNotFoundError,
+    build_context_pack_data,
+    retrieve_context_pack_data,
 )
-from app.utils import api_response, generate_id
+from app.utils import api_response
 
 
 router = APIRouter(prefix='/api/v1', tags=['retrieval'])
 
-
-def _build_context_pack(database: Session, payload: RetrievalQueryRequest, persist: bool) -> tuple[dict, dict, str]:
-    request_id = generate_id('ret')
-    if payload.session_id:
-        session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == payload.session_id))
-        if persist and not session:
-            raise ValueError('session not found')
-    if persist:
-        database.add(
-            RetrievalRequest(
-                request_id=request_id,
-                session_id=payload.session_id,
-                query_text=payload.query,
-                query_type=payload.query_type,
-                repo_id=payload.repo_id,
-                branch_name=payload.branch_name,
-                file_paths=payload.file_paths,
-                token_budget=payload.token_budget,
-            )
-        )
-
-    matching_profiles = [
-        profile
-        for profile in database.scalars(select(ConfigProfile).where(ConfigProfile.status == 'active')).all()
-        if scope_matches(profile.scope_type, profile.scope_id, payload.repo_id, payload.file_paths)
-    ]
-    ranked_profile_rules, profile_vector_backend_name = rank_config_rules(
-        matching_profiles,
-        payload.query,
-        payload.repo_id,
-        payload.file_paths,
-    )
-    selected_profile_rules = select_config_rules(ranked_profile_rules)
-
-    candidate_items = [
-        item
-        for item in database.scalars(select(KnowledgeItem).where(KnowledgeItem.status == 'active')).all()
-        if scope_matches(item.scope_type, item.scope_id, payload.repo_id, payload.file_paths)
-    ]
-
-    ranked_items, vector_backend_name = rank_knowledge_items(candidate_items, payload.query, payload.repo_id, payload.file_paths)
-    selected_items = ranked_items[:8]
-
-    if persist:
-        for rank, item in enumerate(selected_items, start=1):
-            database.add(
-                RetrievalResult(
-                    request_id=request_id,
-                    knowledge_id=item['knowledge_id'],
-                    recall_channel='hybrid',
-                    recall_score=item['lexical_score'],
-                    rerank_score=item['score'],
-                    selected=True,
-                    selected_rank=rank,
-                )
-            )
-
-    rules = dedupe_ranked_entries(
-        [item for item in selected_items if item['knowledge_type'] == 'rule'] + selected_profile_rules
-    )
-    cases = [item for item in selected_items if item['knowledge_type'] == 'case']
-    procedures = [item for item in selected_items if item['knowledge_type'] == 'procedure']
-    ordered_sources = order_context_sources(rules, cases, procedures)
-
-    context_pack = {
-        'context_summary': build_context_summary(ordered_sources),
-        'rules': rules,
-        'cases': cases,
-        'procedures': procedures,
-        'sources': [
-            {
-                'knowledge_id': item['knowledge_id'],
-                'title': item['title'],
-                'knowledge_type': item.get('knowledge_type'),
-                'source_type': item['source_type'],
-                'scope_type': item.get('scope_type'),
-                'scope_id': item.get('scope_id'),
-                'score': item.get('score'),
-            }
-            for item in ordered_sources
-        ],
-    }
-    debug_payload = {
-        'request_id': request_id,
-        'route_decision': {
-            'query_type': payload.query_type,
-            'repo_id': payload.repo_id,
-            'matched_paths': payload.file_paths,
-            'strategy': 'hybrid-retrieval-with-config-scope-and-vector-layer',
-            'vector_backend': vector_backend_name,
-            'config_vector_backend': profile_vector_backend_name,
-        },
-        'matching_profiles': [
-            {
-                'profile_id': profile.profile_id,
-                'scope_type': profile.scope_type,
-                'scope_id': profile.scope_id,
-                'profile_type': profile.profile_type,
-                'version': profile.version,
-            }
-            for profile in matching_profiles
-        ],
-        'candidate_scores': selected_items,
-        'config_rule_scores': ranked_profile_rules[:6],
-        'selected_config_rules': selected_profile_rules,
-        'selected_sources': ordered_sources,
-    }
-    return context_pack, debug_payload, request_id
-
-
 @router.post('/retrieval/query')
 def retrieve_context_pack(payload: RetrievalQueryRequest, database: Session = Depends(get_db)):
-    request_context = get_request_context()
     try:
-        context_pack, debug_payload, request_id = _build_context_pack(database, payload, persist=True)
-    except ValueError as exc:
+        context_pack, request_id = retrieve_context_pack_data(payload, database)
+    except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    append_audit_log(
-        database,
-        actor_id=request_context.user_id or 'system',
-        action='retrieval.query',
-        resource_type='retrieval',
-        resource_id=request_id,
-        scope_type='repo',
-        scope_id=payload.repo_id,
-        detail={
-            'query_type': payload.query_type,
-            'candidate_count': len(debug_payload['candidate_scores']),
-            'vector_backend': debug_payload['route_decision']['vector_backend'],
-        },
-    )
-    database.commit()
     return api_response(context_pack, request_id=request_id)
 
 
 @router.post('/retrieval/debug')
 def debug_retrieval(payload: RetrievalQueryRequest, database: Session = Depends(get_db)):
-    context_pack, debug_payload, _ = _build_context_pack(database, payload, persist=False)
+    context_pack, debug_payload, _ = build_context_pack_data(database, payload, persist=False)
     return api_response({'context_pack': context_pack, 'debug': debug_payload})
 
 

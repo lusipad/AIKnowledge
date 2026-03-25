@@ -7,7 +7,8 @@ from app.models import ConfigProfile, ConfigProfileVersion
 from app.request_context import get_request_context
 from app.schemas import ConfigProfileUpsertRequest, ConfigRollbackRequest
 from app.services.audit import append_audit_log
-from app.utils import api_response, generate_id
+from app.services.use_cases import upsert_profile_data
+from app.utils import api_response
 
 
 router = APIRouter(prefix="/api/v1", tags=["config"])
@@ -84,49 +85,7 @@ def get_profile(profile_id: str, database: Session = Depends(get_db)):
 
 @router.put("/config/profile/{profile_id}")
 def upsert_profile(profile_id: str, payload: ConfigProfileUpsertRequest, database: Session = Depends(get_db)):
-    request_context = get_request_context()
-    profile = database.scalar(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id))
-    if profile:
-        profile.scope_type = payload.scope_type
-        profile.scope_id = payload.scope_id
-        profile.profile_type = payload.profile_type
-        profile.content = payload.content
-        profile.version = max(profile.version + 1, payload.version)
-        profile.status = payload.status
-    else:
-        profile = ConfigProfile(
-            profile_id=profile_id or generate_id("cfg"),
-            scope_type=payload.scope_type,
-            scope_id=payload.scope_id,
-            profile_type=payload.profile_type,
-            content=payload.content,
-            version=max(1, payload.version),
-            status=payload.status,
-        )
-        database.add(profile)
-
-    _record_profile_version(database, profile)
-    append_audit_log(
-        database,
-        actor_id=request_context.user_id or "system",
-        action="config.upsert",
-        resource_type="config",
-        resource_id=profile.profile_id,
-        scope_type=profile.scope_type,
-        scope_id=profile.scope_id,
-        detail={"profile_type": profile.profile_type, "version": profile.version},
-    )
-    database.commit()
-    return api_response(
-        {
-            "profile_id": profile.profile_id,
-            "scope_type": profile.scope_type,
-            "scope_id": profile.scope_id,
-            "profile_type": profile.profile_type,
-            "version": profile.version,
-            "status": profile.status,
-        }
-    )
+    return api_response(upsert_profile_data(profile_id, payload, database))
 
 
 @router.post("/config/profile/{profile_id}/rollback")

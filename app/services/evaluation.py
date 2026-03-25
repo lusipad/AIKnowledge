@@ -11,12 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.models import AuditLog, ContextPackFeedback, EvaluationRun, KnowledgeFeedback, utc_now
 from app.request_context import get_request_context
-from app.routers.config import upsert_profile
-from app.routers.context import append_context_events
-from app.routers.feedback import submit_context_pack_feedback, submit_knowledge_feedback
-from app.routers.knowledge import create_extract_task, get_extract_task, get_knowledge, review_knowledge
-from app.routers.retrieval import retrieve_context_pack
-from app.routers.sessions import create_session
 from app.schemas import (
     ConfigProfileUpsertRequest,
     ContextEventsRequest,
@@ -28,8 +22,20 @@ from app.schemas import (
     SessionCreateRequest,
 )
 from app.services.llm_validation import verify_llm_connection
+from app.services.use_cases import (
+    append_context_events_data,
+    create_extract_task_data,
+    create_session_data,
+    get_extract_task_data,
+    get_knowledge_data,
+    review_knowledge_data,
+    retrieve_context_pack_data,
+    submit_context_pack_feedback_data,
+    submit_knowledge_feedback_data,
+    upsert_profile_data,
+)
 from app.settings import AppSettings
-from app.utils import generate_id, keyword_overlap_score
+from app.utils import api_response, generate_id, keyword_overlap_score
 
 
 DEFAULT_SCENARIOS: dict[str, dict[str, Any]] = {
@@ -255,6 +261,9 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
     }
     responses: dict[str, dict[str, Any]] = {}
 
+    def as_response(data: dict[str, Any], *, request_id: str | None = None) -> dict[str, Any]:
+        return api_response(data, request_id=request_id or request_context.request_id)
+
     def run_step(step_id: str, label: str, func):
         started = time.perf_counter()
         try:
@@ -330,17 +339,20 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
     profile_response, _, profile_error = run_step(
         'upsert_profile',
         '创建评估规则',
-        lambda: upsert_profile(
-            profile_id,
-            ConfigProfileUpsertRequest(
-                scope_type='path',
-                scope_id=scenario['file_path'].rsplit('/', 1)[0],
-                profile_type='coding_rule',
-                content={'instructions': scenario['profile_instructions']},
-                version=1,
-                status='active',
-            ),
-            database,
+        lambda: as_response(
+            upsert_profile_data(
+                profile_id,
+                ConfigProfileUpsertRequest(
+                    scope_type='path',
+                    scope_id=scenario['file_path'].rsplit('/', 1)[0],
+                    profile_type='coding_rule',
+                    content={'instructions': scenario['profile_instructions']},
+                    version=1,
+                    status='active',
+                ),
+                database,
+                request_context=request_context,
+            )
         ),
     )
     if profile_response:
@@ -364,14 +376,17 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
         session_response, _, session_error = run_step(
             'create_session',
             '创建评估会话',
-            lambda: create_session(
-                SessionCreateRequest(
-                    repo_id=scenario['repo_id'],
-                    branch_name=scenario['branch_name'],
-                    task_id=scenario['task_id'],
-                    client_type=request_context.client_type or 'evaluation',
-                ),
-                database,
+            lambda: as_response(
+                create_session_data(
+                    SessionCreateRequest(
+                        repo_id=scenario['repo_id'],
+                        branch_name=scenario['branch_name'],
+                        task_id=scenario['task_id'],
+                        client_type=request_context.client_type or 'evaluation',
+                    ),
+                    database,
+                    request_context=request_context,
+                )
             ),
         )
         if session_response:
@@ -396,20 +411,23 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
         events_response, _, events_error = run_step(
             'append_events',
             '上报场景事件',
-            lambda: append_context_events(
-                ContextEventsRequest(
-                    session_id=session_response['data']['session_id'],
-                    events=[
-                        {
-                            'event_type': item['event_type'],
-                            'summary': item['summary'],
-                            'file_paths': [scenario['file_path']],
-                            'symbol_names': ['validateOrderRisk'],
-                        }
-                        for item in scenario['events']
-                    ],
-                ),
-                database,
+            lambda: as_response(
+                append_context_events_data(
+                    ContextEventsRequest(
+                        session_id=session_response['data']['session_id'],
+                        events=[
+                            {
+                                'event_type': item['event_type'],
+                                'summary': item['summary'],
+                                'file_paths': [scenario['file_path']],
+                                'symbol_names': ['validateOrderRisk'],
+                            }
+                            for item in scenario['events']
+                        ],
+                    ),
+                    database,
+                    request_context=request_context,
+                )
             ),
         )
         if events_response:
@@ -437,7 +455,13 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
         extract_response, extract_duration_ms, extract_error = run_step(
             'extract_knowledge',
             '抽取知识',
-            lambda: create_extract_task(ExtractRequest(signal_ids=signal_ids, force=False), database),
+            lambda: as_response(
+                create_extract_task_data(
+                    ExtractRequest(signal_ids=signal_ids, force=False),
+                    database,
+                    request_context=request_context,
+                )
+            ),
         )
         if extract_response:
             responses['extract'] = extract_response
@@ -446,8 +470,8 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             first_item = extract_response['data']['items'][0]
             artifacts['extract_task_id'] = first_item['task_id']
             artifacts['knowledge_id'] = first_item['knowledge_id']
-            extract_task_response = get_extract_task(first_item['task_id'], database)
-            knowledge_response = get_knowledge(first_item['knowledge_id'], database)
+            extract_task_response = as_response(get_extract_task_data(first_item['task_id'], database))
+            knowledge_response = as_response(get_knowledge_data(first_item['knowledge_id'], database))
             responses['extract_task'] = extract_task_response
             responses['knowledge'] = knowledge_response
             artifacts['extract_model_name'] = extract_task_response['data']['model_name']
@@ -517,14 +541,16 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             'approve_knowledge',
             '审核知识并激活检索样本',
             lambda: [
-                review_knowledge(
-                    ReviewRequest(
-                        knowledge_id=knowledge_id,
-                        decision='approve',
-                        reviewer_id='evaluation-runner',
-                        comment='Evaluation auto approval',
-                    ),
-                    database,
+                as_response(
+                    review_knowledge_data(
+                        ReviewRequest(
+                            knowledge_id=knowledge_id,
+                            decision='approve',
+                            reviewer_id='evaluation-runner',
+                            comment='Evaluation auto approval',
+                        ),
+                        database,
+                    )
                 )
                 for knowledge_id in extracted_knowledge_ids
             ],
@@ -534,7 +560,7 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             artifacts['approved_knowledge_ids'] = extracted_knowledge_ids
             primary_knowledge_id = artifacts.get('knowledge_id')
             if primary_knowledge_id:
-                knowledge_response = get_knowledge(primary_knowledge_id, database)
+                knowledge_response = as_response(get_knowledge_data(primary_knowledge_id, database))
             responses['knowledge'] = knowledge_response
         _build_check(
             checks,
@@ -544,7 +570,7 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             passed=bool(
                 extracted_knowledge_ids
                 and all(
-                    get_knowledge(knowledge_id, database)['data']['status'] == 'active'
+                    get_knowledge_data(knowledge_id, database)['status'] == 'active'
                     for knowledge_id in extracted_knowledge_ids
                 )
             ),
@@ -552,7 +578,7 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             detail=f'已激活 {len(extracted_knowledge_ids)} 条知识' if review_response else str(review_error),
             expected='所有抽取知识均为 active',
             actual={
-                knowledge_id: get_knowledge(knowledge_id, database)['data']['status']
+                knowledge_id: get_knowledge_data(knowledge_id, database)['status']
                 for knowledge_id in extracted_knowledge_ids
             }
             if extracted_knowledge_ids
@@ -565,17 +591,22 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
         retrieval_response, _, retrieval_error = run_step(
             'retrieve_context',
             '检索上下文包',
-            lambda: retrieve_context_pack(
-                RetrievalQueryRequest(
-                    session_id=session_response['data']['session_id'],
-                    query=scenario['query'],
-                    query_type='feature_impl',
-                    repo_id=scenario['repo_id'],
-                    branch_name=scenario['branch_name'],
-                    file_paths=[scenario['file_path']],
-                    token_budget=2200,
-                ),
-                database,
+            lambda: (
+                lambda context_pack, request_id: as_response(context_pack, request_id=request_id)
+            )(
+                *retrieve_context_pack_data(
+                    RetrievalQueryRequest(
+                        session_id=session_response['data']['session_id'],
+                        query=scenario['query'],
+                        query_type='feature_impl',
+                        repo_id=scenario['repo_id'],
+                        branch_name=scenario['branch_name'],
+                        file_paths=[scenario['file_path']],
+                        token_budget=2200,
+                    ),
+                    database,
+                    request_context=request_context,
+                )
             ),
         )
         if retrieval_response:
@@ -690,27 +721,33 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             'submit_feedback',
             '写入反馈',
             lambda: (
-                submit_knowledge_feedback(
-                    FeedbackRequest(
-                        knowledge_id=knowledge_response['data']['knowledge_id'],
-                        request_id=retrieval_response['request_id'],
-                        feedback_type='accepted',
-                        feedback_score=5,
-                        feedback_text='Evaluation accepted',
-                        created_by=request_context.user_id or 'evaluation-runner',
-                    ),
-                    database,
+                as_response(
+                    submit_knowledge_feedback_data(
+                        FeedbackRequest(
+                            knowledge_id=knowledge_response['data']['knowledge_id'],
+                            request_id=retrieval_response['request_id'],
+                            feedback_type='accepted',
+                            feedback_score=5,
+                            feedback_text='Evaluation accepted',
+                            created_by=request_context.user_id or 'evaluation-runner',
+                        ),
+                        database,
+                        request_context=request_context,
+                    )
                 ),
-                submit_context_pack_feedback(
-                    ContextPackFeedbackRequest(
-                        request_id=retrieval_response['request_id'],
-                        feedback_score=5,
-                        relevance_score=5,
-                        completeness_score=4,
-                        feedback_text='Evaluation helpful',
-                        created_by=request_context.user_id or 'evaluation-runner',
-                    ),
-                    database,
+                as_response(
+                    submit_context_pack_feedback_data(
+                        ContextPackFeedbackRequest(
+                            request_id=retrieval_response['request_id'],
+                            feedback_score=5,
+                            relevance_score=5,
+                            completeness_score=4,
+                            feedback_text='Evaluation helpful',
+                            created_by=request_context.user_id or 'evaluation-runner',
+                        ),
+                        database,
+                        request_context=request_context,
+                    )
                 ),
             ),
         )
