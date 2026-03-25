@@ -328,12 +328,14 @@ API 设计目标：
 - 平台上下文可写 `global / repo / path` 共享配置。
 - 租户上下文可写入自身的 `tenant` scope 配置，以及租户私有 `repo / path` 配置。
 - 带 `X-Team-Id` 的团队上下文可额外写入自身的 `team` scope 配置，以及团队私有 `repo / path` 配置。
+- `repo / path` 配置可选传入 `ownership_mode=shared|tenant|team` 显式声明归属；未传时保持按请求上下文推导的兼容行为。
 - 可选传入 `acl` 控制 profile 的 owners / editors / reviewers / viewers。
 
 响应补充：
 
 - `tenant_id`
 - `team_id`
+- `ownership_mode`
 
 ## 7.3 回滚配置
 

@@ -162,18 +162,43 @@ def _assert_profile_scope_writable(
 def _resolve_new_profile_owner(
     *,
     scope_type: str,
+    ownership_mode: str | None,
     request_context: RequestContext,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str]:
+    normalized_mode = (ownership_mode or '').strip().lower() or None
     if not request_context.tenant_id:
-        return None, None
+        if normalized_mode and normalized_mode != 'shared':
+            raise AuthorizationError('platform context only supports shared config ownership')
+        return None, None, 'shared'
 
     if scope_type == 'tenant':
-        return request_context.tenant_id, None
+        if normalized_mode and normalized_mode != 'tenant':
+            raise InvalidOperationError('tenant scoped config profile requires tenant ownership mode')
+        return request_context.tenant_id, None, 'tenant'
     if scope_type == 'team':
-        return request_context.tenant_id, request_context.team_id
+        if normalized_mode and normalized_mode != 'team':
+            raise InvalidOperationError('team scoped config profile requires team ownership mode')
+        return request_context.tenant_id, request_context.team_id, 'team'
     if scope_type in {'repo', 'path'}:
-        return request_context.tenant_id, request_context.team_id
-    return None, None
+        resolved_mode = normalized_mode or ('team' if request_context.team_id else 'tenant')
+        if resolved_mode == 'shared':
+            raise AuthorizationError('shared repo/path config profile requires platform context')
+        if resolved_mode == 'tenant':
+            return request_context.tenant_id, None, 'tenant'
+        if resolved_mode == 'team':
+            if not request_context.team_id:
+                raise AuthorizationError('team-owned repo/path config profile requires team context')
+            return request_context.tenant_id, request_context.team_id, 'team'
+        raise InvalidOperationError('unsupported config ownership mode')
+    return None, None, 'shared'
+
+
+def resolve_profile_ownership_mode(profile: ConfigProfile) -> str:
+    if profile.team_id:
+        return 'team'
+    if profile.tenant_id:
+        return 'tenant'
+    return 'shared'
 
 
 def _ensure_profile_owner_writable(profile: ConfigProfile, request_context: RequestContext) -> None:
@@ -385,8 +410,9 @@ def upsert_profile_data(
         scope_id=payload.scope_id,
         request_context=current_context,
     )
-    owner_tenant_id, owner_team_id = _resolve_new_profile_owner(
+    owner_tenant_id, owner_team_id, _ = _resolve_new_profile_owner(
         scope_type=payload.scope_type,
+        ownership_mode=payload.ownership_mode,
         request_context=current_context,
     )
     profile_exists = database.scalar(select(ConfigProfile.profile_id).where(ConfigProfile.profile_id == profile_id))
@@ -406,6 +432,8 @@ def upsert_profile_data(
             raise AuthorizationError('config profile is not writable for current user')
         profile.scope_type = payload.scope_type
         profile.scope_id = payload.scope_id
+        profile.tenant_id = owner_tenant_id
+        profile.team_id = owner_team_id
         profile.profile_type = payload.profile_type
         profile.content = payload.content
         profile.acl = normalize_acl(payload.acl.model_dump() if payload.acl else profile.acl)
@@ -444,6 +472,7 @@ def upsert_profile_data(
         'profile_id': profile.profile_id,
         'tenant_id': profile.tenant_id,
         'team_id': profile.team_id,
+        'ownership_mode': resolve_profile_ownership_mode(profile),
         'scope_type': profile.scope_type,
         'scope_id': profile.scope_id,
         'profile_type': profile.profile_type,

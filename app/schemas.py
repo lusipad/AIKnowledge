@@ -95,6 +95,7 @@ class ConfigProfileUpsertRequest(BaseModel):
     scope_id: str
     profile_type: str
     content: dict[str, Any] = Field(default_factory=dict)
+    ownership_mode: str | None = None
     acl: ResourceAclInput | None = None
     version: int = 1
     status: str = "active"

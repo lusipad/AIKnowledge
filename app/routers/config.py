@@ -10,7 +10,14 @@ from app.schemas import ConfigProfileUpsertRequest, ConfigRollbackRequest
 from app.services.audit import append_audit_log
 from app.services.isolation import apply_config_scope
 from app.services.resource_acl import can_view_resource
-from app.services.use_cases import AuthorizationError, InvalidOperationError, ResourceNotFoundError, ensure_profile_writable, upsert_profile_data
+from app.services.use_cases import (
+    AuthorizationError,
+    InvalidOperationError,
+    ResourceNotFoundError,
+    ensure_profile_writable,
+    resolve_profile_ownership_mode,
+    upsert_profile_data,
+)
 from app.services.vector_store import sync_config_vector_index
 from app.utils import api_response
 
@@ -58,6 +65,7 @@ def get_profiles(
                 "profile_id": profile.profile_id,
                 "tenant_id": profile.tenant_id,
                 "team_id": profile.team_id,
+                "ownership_mode": resolve_profile_ownership_mode(profile),
                 "scope_type": profile.scope_type,
                 "scope_id": profile.scope_id,
                 "profile_type": profile.profile_type,
@@ -90,6 +98,7 @@ def get_profile(
             "profile_id": profile.profile_id,
             "tenant_id": profile.tenant_id,
             "team_id": profile.team_id,
+            "ownership_mode": resolve_profile_ownership_mode(profile),
             "scope_type": profile.scope_type,
             "scope_id": profile.scope_id,
             "profile_type": profile.profile_type,
@@ -162,6 +171,8 @@ def rollback_profile(
         raise HTTPException(status_code=404, detail="target version not found")
 
     profile.content = target_version.content
+    profile.tenant_id = target_version.tenant_id
+    profile.team_id = target_version.team_id
     profile.acl = target_version.acl
     profile.status = target_version.status
     profile.version += 1
@@ -183,6 +194,7 @@ def rollback_profile(
             "profile_id": profile.profile_id,
             "tenant_id": profile.tenant_id,
             "team_id": profile.team_id,
+            "ownership_mode": resolve_profile_ownership_mode(profile),
             "version": profile.version,
             "restored_from": target_version.version,
             "status": profile.status,

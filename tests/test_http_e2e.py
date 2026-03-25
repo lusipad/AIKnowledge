@@ -264,6 +264,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                 'scope_type': 'repo',
                 'scope_id': 'demo-repo',
                 'profile_type': 'prompt',
+                'ownership_mode': 'team',
                 'content': {'instructions': ['团队私有 repo 规则：支付链路变更必须补充灰度开关。']},
                 'version': 1,
                 'status': 'active',
@@ -273,6 +274,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         self.assertEqual(team_repo_profile_response.status_code, 200)
         self.assertEqual(team_repo_profile_response.json()['data']['tenant_id'], 'tenant-demo')
         self.assertEqual(team_repo_profile_response.json()['data']['team_id'], 'team-demo')
+        self.assertEqual(team_repo_profile_response.json()['data']['ownership_mode'], 'team')
 
         tenant_admin_headers = {
             'X-Request-Id': 'req_http_e2e_005',
@@ -288,6 +290,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                 'scope_type': 'repo',
                 'scope_id': 'demo-repo',
                 'profile_type': 'prompt',
+                'ownership_mode': 'tenant',
                 'content': {'instructions': ['租户私有 repo 规则：订单链路发布前必须核对租户开关矩阵。']},
                 'version': 1,
                 'status': 'active',
@@ -297,6 +300,24 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         self.assertEqual(tenant_repo_profile_response.status_code, 200)
         self.assertEqual(tenant_repo_profile_response.json()['data']['tenant_id'], 'tenant-demo')
         self.assertIsNone(tenant_repo_profile_response.json()['data']['team_id'])
+        self.assertEqual(tenant_repo_profile_response.json()['data']['ownership_mode'], 'tenant')
+
+        migrate_team_repo_to_tenant = self.client.put(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            json={
+                'scope_type': 'repo',
+                'scope_id': 'demo-repo',
+                'profile_type': 'prompt',
+                'ownership_mode': 'tenant',
+                'content': {'instructions': ['团队 repo 规则已收敛为租户级共享规则。']},
+                'version': 2,
+                'status': 'active',
+            },
+            headers=request_headers,
+        )
+        self.assertEqual(migrate_team_repo_to_tenant.status_code, 200)
+        self.assertIsNone(migrate_team_repo_to_tenant.json()['data']['team_id'])
+        self.assertEqual(migrate_team_repo_to_tenant.json()['data']['ownership_mode'], 'tenant')
 
         shared_repo_profiles = self.client.get(
             '/api/v1/config/profile',
@@ -322,6 +343,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
             headers=request_headers,
         )
         self.assertEqual(own_team_repo_profile.status_code, 200)
+        self.assertEqual(own_team_repo_profile.json()['data']['team_id'], None)
 
         own_tenant_repo_profile = self.client.get(
             f'/api/v1/config/profile/{tenant_repo_profile_id}',
@@ -448,6 +470,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
             headers=same_team_peer_headers,
         )
         self.assertEqual(same_team_peer_repo_profile_after_rollback.status_code, 200)
+        self.assertEqual(same_team_peer_repo_profile_after_rollback.json()['data']['ownership_mode'], 'team')
 
         same_team_peer_profile_update = self.client.put(
             f'/api/v1/config/profile/{team_profile_id}',

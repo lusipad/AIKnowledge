@@ -427,6 +427,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - 平台上下文可管理平台共享 `global / repo / path`
 - 租户上下文可管理本租户 `tenant` 与租户私有 `repo / path`
 - 团队上下文可额外管理本团队 `team` 与团队私有 `repo / path`
+- `PUT /config/profile/{profile_id}` 支持显式传入 `ownership_mode=shared|tenant|team` 控制 `repo/path` 配置归属
 - 当前内置角色能力为：`viewer` 只读、`writer` 可写会话/检索/反馈、`reviewer` 可审核知识与查看信号、`admin` 可变更配置/知识与执行评估
 
 ## 配套文件
@@ -442,7 +443,6 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 ## 当前限制
 
-- `repo / path` 私有配置的归属当前仍按请求上下文自动推导，尚未提供在单次写请求中显式切换“租户私有 / 团队私有”的独立参数
 - `pgvector` 后端已支持数据库持久化向量层，但当前仍使用跨数据库兼容的 JSON 向量存储，尚未引入 PostgreSQL 原生 `vector` 列与 ANN 索引优化
 - 已提供 `viewer / writer / reviewer / admin` 四级权限控制，以及知识 / 配置资源级 ACL；但尚未接入外部 IAM、组织级角色同步和跨系统身份治理
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式

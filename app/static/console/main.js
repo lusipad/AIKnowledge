@@ -274,10 +274,12 @@ function updateHealthView(payload) {
 
 function buildProfilePayload() {
   const scenario = getScenario();
+  const config = getConfig();
   return {
     scope_type: 'path',
     scope_id: scenario.path.replace(/\/[^/]+$/, ''),
     profile_type: 'coding_rule',
+    ownership_mode: config.teamId ? 'team' : config.tenantId ? 'tenant' : 'shared',
     content: { instructions: [scenario.profileInstruction] },
     version: 1,
     status: 'active',
