@@ -227,6 +227,21 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 - `POST /api/v1/feedback/context-pack`
 - `GET /api/v1/audit/logs`
 
+## 请求上下文
+
+服务端会读取并透传这些请求头：
+
+- `X-Request-Id`
+- `X-Tenant-Id`
+- `X-Team-Id`
+- `X-User-Id`
+- `X-Client-Type`
+
+其中：
+
+- `X-Request-Id` 会写入响应头，并出现在大部分响应体的 `request_id`
+- `X-Tenant-Id`、`X-Team-Id`、`X-User-Id`、`X-Client-Type` 会进入会话元数据和审计日志
+
 ## 配套文件
 
 - `Dockerfile`

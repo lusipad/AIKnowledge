@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
-from app.models import ConfigProfile, KnowledgeItem, RetrievalRequest, RetrievalResult
+from app.models import ConfigProfile, ConversationSession, KnowledgeItem, RetrievalRequest, RetrievalResult
+from app.request_context import get_request_context
 from app.schemas import RetrievalQueryRequest
 from app.services.audit import append_audit_log
 from app.services.retrieval import config_profile_to_rule, rank_knowledge_items, scope_matches
@@ -15,6 +16,10 @@ router = APIRouter(prefix='/api/v1', tags=['retrieval'])
 
 def _build_context_pack(database: Session, payload: RetrievalQueryRequest, persist: bool) -> tuple[dict, dict, str]:
     request_id = generate_id('ret')
+    if payload.session_id:
+        session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == payload.session_id))
+        if persist and not session:
+            raise ValueError('session not found')
     if persist:
         database.add(
             RetrievalRequest(
@@ -102,10 +107,14 @@ def _build_context_pack(database: Session, payload: RetrievalQueryRequest, persi
 
 @router.post('/retrieval/query')
 def retrieve_context_pack(payload: RetrievalQueryRequest, database: Session = Depends(get_db)):
-    context_pack, debug_payload, request_id = _build_context_pack(database, payload, persist=True)
+    request_context = get_request_context()
+    try:
+        context_pack, debug_payload, request_id = _build_context_pack(database, payload, persist=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     append_audit_log(
         database,
-        actor_id='system',
+        actor_id=request_context.user_id or 'system',
         action='retrieval.query',
         resource_type='retrieval',
         resource_id=request_id,

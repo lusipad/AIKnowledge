@@ -45,6 +45,13 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         self.engine.dispose()
 
     def test_http_end_to_end_flow(self):
+        request_headers = {
+            'X-Request-Id': 'req_http_e2e_001',
+            'X-Tenant-Id': 'tenant-demo',
+            'X-Team-Id': 'team-demo',
+            'X-User-Id': 'user-demo',
+            'X-Client-Type': 'agent',
+        }
         session_response = self.client.post(
             '/api/v1/sessions',
             json={
@@ -53,9 +60,17 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                 'task_id': 'ISSUE-2048',
                 'client_type': 'cli',
             },
+            headers=request_headers,
         )
         self.assertEqual(session_response.status_code, 200)
-        session_id = session_response.json()['data']['session_id']
+        self.assertEqual(session_response.headers['X-Request-Id'], 'req_http_e2e_001')
+        session_payload = session_response.json()
+        self.assertEqual(session_payload['request_id'], 'req_http_e2e_001')
+        self.assertEqual(session_payload['data']['tenant_id'], 'tenant-demo')
+        self.assertEqual(session_payload['data']['team_id'], 'team-demo')
+        self.assertEqual(session_payload['data']['user_id'], 'user-demo')
+        self.assertEqual(session_payload['data']['client_type'], 'agent')
+        session_id = session_payload['data']['session_id']
 
         events_response = self.client.post(
             '/api/v1/context/events',
@@ -76,25 +91,35 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                     },
                 ],
             },
+            headers=request_headers,
         )
         self.assertEqual(events_response.status_code, 200)
         signal_ids = events_response.json()['data']['created_signal_ids']
         self.assertEqual(len(signal_ids), 2)
 
-        extract_response = self.client.post('/api/v1/knowledge/extract', json={'signal_ids': signal_ids, 'force': False})
+        extract_response = self.client.post(
+            '/api/v1/knowledge/extract',
+            json={'signal_ids': signal_ids, 'force': False},
+            headers=request_headers,
+        )
         self.assertEqual(extract_response.status_code, 200)
         items = extract_response.json()['data']['items']
         self.assertEqual(len(items), 2)
         knowledge_id = items[0]['knowledge_id']
         self.assertFalse(items[0]['deduplicated'])
 
-        extract_deduplicated_response = self.client.post('/api/v1/knowledge/extract', json={'signal_ids': signal_ids, 'force': False})
+        extract_deduplicated_response = self.client.post(
+            '/api/v1/knowledge/extract',
+            json={'signal_ids': signal_ids, 'force': False},
+            headers=request_headers,
+        )
         self.assertEqual(extract_deduplicated_response.status_code, 200)
         self.assertTrue(extract_deduplicated_response.json()['data']['items'][0]['deduplicated'])
 
         review_response = self.client.post(
             '/api/v1/knowledge/review',
             json={'knowledge_id': knowledge_id, 'decision': 'approve', 'reviewer_id': 'reviewer-http'},
+            headers=request_headers,
         )
         self.assertEqual(review_response.status_code, 200)
         self.assertEqual(review_response.json()['data']['status'], 'active')
@@ -117,6 +142,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                 'file_paths': ['src/order/risk/check.ts'],
                 'token_budget': 2000,
             },
+            headers=request_headers,
         )
         self.assertEqual(retrieval_response.status_code, 200)
         retrieval_payload = retrieval_response.json()
@@ -133,6 +159,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                 'feedback_text': '帮助较大',
                 'created_by': 'http-dev',
             },
+            headers=request_headers,
         )
         self.assertEqual(context_feedback_response.status_code, 200)
 
@@ -146,12 +173,15 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                 'feedback_text': '命中准确',
                 'created_by': 'http-dev',
             },
+            headers=request_headers,
         )
         self.assertEqual(knowledge_feedback_response.status_code, 200)
 
-        audit_logs_response = self.client.get('/api/v1/audit/logs')
+        audit_logs_response = self.client.get('/api/v1/audit/logs', headers=request_headers)
         self.assertEqual(audit_logs_response.status_code, 200)
         self.assertGreaterEqual(len(audit_logs_response.json()['data']), 1)
+        self.assertEqual(audit_logs_response.json()['request_id'], 'req_http_e2e_001')
+        self.assertEqual(audit_logs_response.json()['data'][0]['detail']['tenant_id'], 'tenant-demo')
 
 
 if __name__ == '__main__':

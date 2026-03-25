@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog
+from app.request_context import get_request_context
 
 
 def append_audit_log(
@@ -16,6 +17,16 @@ def append_audit_log(
     scope_id: str | None = None,
     detail: dict | None = None,
 ) -> None:
+    request_context = get_request_context()
+    payload_detail = dict(detail or {})
+    payload_detail.setdefault('request_id', request_context.request_id)
+    if request_context.client_type:
+        payload_detail.setdefault('client_type', request_context.client_type)
+    if request_context.tenant_id:
+        payload_detail.setdefault('tenant_id', request_context.tenant_id)
+    if request_context.team_id:
+        payload_detail.setdefault('team_id', request_context.team_id)
+
     database.add(
         AuditLog(
             actor_id=actor_id,
@@ -24,6 +35,6 @@ def append_audit_log(
             resource_id=resource_id,
             scope_type=scope_type,
             scope_id=scope_id,
-            detail=detail or {},
+            detail=payload_detail,
         )
     )

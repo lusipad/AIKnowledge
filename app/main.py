@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.database import Base, SessionLocal, engine
+from app.request_context import RequestContextMiddleware
 from app.routers.audit import router as audit_router
 from app.routers.config import router as config_router
 from app.routers.context import router as context_router
@@ -39,6 +40,7 @@ app = FastAPI(
 
 if settings.api_key_enabled:
     app.add_middleware(ApiKeyMiddleware, api_key=settings.api_key)
+app.add_middleware(RequestContextMiddleware)
 
 app.include_router(sessions_router)
 app.include_router(context_router)
@@ -52,30 +54,32 @@ app.include_router(audit_router)
 
 @app.get('/')
 def root():
+    current_settings = load_settings()
     return {
         'service': 'ai-coding-knowledge-memory-mvp',
         'status': 'ok',
         'docs': '/docs',
-        'version': settings.app_version,
-        'env': settings.env,
-        'auth_enabled': settings.api_key_enabled,
-        'vector_backend': settings.vector_backend,
-        'llm_configured': settings.llm_configured,
+        'version': current_settings.app_version,
+        'env': current_settings.env,
+        'auth_enabled': current_settings.api_key_enabled,
+        'vector_backend': current_settings.vector_backend,
+        'llm_configured': current_settings.llm_configured,
     }
 
 
 @app.get('/healthz')
 def healthz():
+    current_settings = load_settings()
     db_ok, db_detail = database_healthcheck()
     return {
         'status': 'ok' if db_ok else 'degraded',
         'database': {'ok': db_ok, 'detail': db_detail},
-        'vector_backend': settings.vector_backend,
-        'auth_enabled': settings.api_key_enabled,
+        'vector_backend': current_settings.vector_backend,
+        'auth_enabled': current_settings.api_key_enabled,
         'llm': {
-            'configured': settings.llm_configured,
-            'model': settings.llm_model,
-            'base_url': settings.llm_base_url,
+            'configured': current_settings.llm_configured,
+            'model': current_settings.llm_model,
+            'base_url': current_settings.llm_base_url,
         },
-        'version': settings.app_version,
+        'version': current_settings.app_version,
     }

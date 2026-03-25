@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import ContextPackFeedback, KnowledgeFeedback, KnowledgeItem, RetrievalRequest
+from app.request_context import get_request_context
 from app.schemas import ContextPackFeedbackRequest, FeedbackRequest
 from app.services.audit import append_audit_log
 from app.utils import api_response
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/api/v1", tags=["feedback"])
 
 @router.post("/feedback/knowledge")
 def submit_knowledge_feedback(payload: FeedbackRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == payload.knowledge_id))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
@@ -36,7 +38,7 @@ def submit_knowledge_feedback(payload: FeedbackRequest, database: Session = Depe
 
     append_audit_log(
         database,
-        actor_id=payload.created_by,
+        actor_id=request_context.user_id or payload.created_by,
         action="feedback.knowledge",
         resource_type="knowledge",
         resource_id=payload.knowledge_id,
@@ -56,6 +58,7 @@ def submit_knowledge_feedback(payload: FeedbackRequest, database: Session = Depe
 
 @router.post("/feedback/context-pack")
 def submit_context_pack_feedback(payload: ContextPackFeedbackRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     request = database.scalar(select(RetrievalRequest).where(RetrievalRequest.request_id == payload.request_id))
     if not request:
         raise HTTPException(status_code=404, detail="retrieval request not found")
@@ -72,7 +75,7 @@ def submit_context_pack_feedback(payload: ContextPackFeedbackRequest, database: 
     )
     append_audit_log(
         database,
-        actor_id=payload.created_by,
+        actor_id=request_context.user_id or payload.created_by,
         action="feedback.context_pack",
         resource_type="retrieval",
         resource_id=payload.request_id,

@@ -6,6 +6,8 @@ import uuid
 from difflib import SequenceMatcher
 from typing import Any
 
+from app.request_context import get_request_id
+
 
 def generate_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
@@ -13,8 +15,9 @@ def generate_id(prefix: str) -> str:
 
 def api_response(data: Any = None, message: str = "ok", code: int = 0, request_id: str | None = None) -> dict[str, Any]:
     payload = {"code": code, "message": message, "data": data or {}}
-    if request_id:
-        payload["request_id"] = request_id
+    resolved_request_id = request_id or get_request_id()
+    if resolved_request_id:
+        payload["request_id"] = resolved_request_id
     return payload
 
 

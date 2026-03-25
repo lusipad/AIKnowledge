@@ -14,6 +14,7 @@ from app.models import (
     SessionEvent,
     utc_now,
 )
+from app.request_context import get_request_context
 from app.schemas import ExtractRequest, KnowledgeDeprecateRequest, KnowledgeUpdateRequest, ReviewRequest
 from app.services.audit import append_audit_log
 from app.services.extraction import extract_knowledge_draft
@@ -52,6 +53,7 @@ def _build_knowledge_from_signal(database: Session, signal: KnowledgeSignal) -> 
 
     knowledge = KnowledgeItem(
         knowledge_id=generate_id("kn"),
+        tenant_id=session.tenant_id if session else None,
         scope_type=extraction.content.get("scope_type", "repo" if session else "global"),
         scope_id=extraction.content.get("scope_id", session.repo_id if session else "global"),
         knowledge_type=extraction.knowledge_type,
@@ -112,6 +114,7 @@ def _find_existing_extract_result(database: Session, signal_id: str) -> tuple[Kn
 
 @router.post("/knowledge/extract")
 def create_extract_task(payload: ExtractRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     signals = database.scalars(select(KnowledgeSignal).where(KnowledgeSignal.signal_id.in_(payload.signal_ids))).all()
     if not signals:
         raise HTTPException(status_code=404, detail="signals not found")
@@ -136,7 +139,7 @@ def create_extract_task(payload: ExtractRequest, database: Session = Depends(get
         candidate, task, knowledge = _build_knowledge_from_signal(database, signal)
         append_audit_log(
             database,
-            actor_id="system",
+            actor_id=request_context.user_id or "system",
             action="knowledge.extract",
             resource_type="knowledge",
             resource_id=knowledge.knowledge_id,
@@ -308,6 +311,7 @@ def get_knowledge(knowledge_id: str, database: Session = Depends(get_db)):
 
 @router.patch("/knowledge/{knowledge_id}")
 def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
@@ -330,7 +334,7 @@ def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, databas
         knowledge.version += 1
         append_audit_log(
             database,
-            actor_id="system",
+            actor_id=request_context.user_id or "system",
             action="knowledge.update",
             resource_type="knowledge",
             resource_id=knowledge_id,
@@ -350,6 +354,7 @@ def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, databas
 
 @router.post("/knowledge/{knowledge_id}/deprecate")
 def deprecate_knowledge(knowledge_id: str, payload: KnowledgeDeprecateRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
@@ -359,7 +364,7 @@ def deprecate_knowledge(knowledge_id: str, payload: KnowledgeDeprecateRequest, d
     knowledge.version += 1
     append_audit_log(
         database,
-        actor_id=payload.actor_id,
+        actor_id=request_context.user_id or payload.actor_id,
         action="knowledge.deprecate",
         resource_type="knowledge",
         resource_id=knowledge_id,

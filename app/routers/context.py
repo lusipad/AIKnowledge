@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import ConversationSession, KnowledgeSignal, SessionEvent
+from app.request_context import get_request_context
 from app.schemas import ContextEventsRequest
 from app.services.audit import append_audit_log
 from app.services.signals import build_signal_from_event
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/api/v1", tags=["context"])
 
 @router.post("/context/events")
 def append_context_events(payload: ContextEventsRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == payload.session_id))
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
@@ -44,7 +46,7 @@ def append_context_events(payload: ContextEventsRequest, database: Session = Dep
 
     append_audit_log(
         database,
-        actor_id="system",
+        actor_id=request_context.user_id or session.user_id or "system",
         action="context.events.append",
         resource_type="session",
         resource_id=payload.session_id,

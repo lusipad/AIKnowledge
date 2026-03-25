@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import ConfigProfile, ConfigProfileVersion
+from app.request_context import get_request_context
 from app.schemas import ConfigProfileUpsertRequest, ConfigRollbackRequest
 from app.services.audit import append_audit_log
 from app.utils import api_response, generate_id
@@ -83,6 +84,7 @@ def get_profile(profile_id: str, database: Session = Depends(get_db)):
 
 @router.put("/config/profile/{profile_id}")
 def upsert_profile(profile_id: str, payload: ConfigProfileUpsertRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     profile = database.scalar(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id))
     if profile:
         profile.scope_type = payload.scope_type
@@ -106,7 +108,7 @@ def upsert_profile(profile_id: str, payload: ConfigProfileUpsertRequest, databas
     _record_profile_version(database, profile)
     append_audit_log(
         database,
-        actor_id="system",
+        actor_id=request_context.user_id or "system",
         action="config.upsert",
         resource_type="config",
         resource_id=profile.profile_id,
@@ -129,6 +131,7 @@ def upsert_profile(profile_id: str, payload: ConfigProfileUpsertRequest, databas
 
 @router.post("/config/profile/{profile_id}/rollback")
 def rollback_profile(profile_id: str, payload: ConfigRollbackRequest, database: Session = Depends(get_db)):
+    request_context = get_request_context()
     profile = database.scalar(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id))
     if not profile:
         raise HTTPException(status_code=404, detail="profile not found")
@@ -160,7 +163,7 @@ def rollback_profile(profile_id: str, payload: ConfigRollbackRequest, database: 
     _record_profile_version(database, profile)
     append_audit_log(
         database,
-        actor_id=payload.actor_id,
+        actor_id=request_context.user_id or payload.actor_id,
         action="config.rollback",
         resource_type="config",
         resource_id=profile.profile_id,
