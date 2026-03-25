@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 *.db
 runtime/
+output/
 .pytest_cache/
 .venv/
 .env

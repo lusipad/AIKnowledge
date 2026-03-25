@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Coding Knowledge Console</title>
+    <link rel="icon" type="image/svg+xml" href="/static/console/assets/favicon.svg" />
+    <link rel="stylesheet" href="/static/console/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="page-noise"></div>
+      <header class="hero-panel" data-reveal>
+        <div class="hero-copy">
+          <p class="eyebrow">AI Coding Knowledge Console</p>
+          <h1>把一次真实研发问题，沉淀成可检索、可审核、可复用的知识闭环。</h1>
+          <p class="hero-text">
+            这个控制台直接连当前 FastAPI 服务。你可以逐步操作，也可以一键跑通“订单风控规则接入”完整场景，
+            从配置规则、创建会话、追加事件，到知识抽取、审核、检索、反馈与审计，全链路都是真实 API。
+          </p>
+          <div class="hero-actions">
+            <button id="runDemoButton" class="button button-primary" type="button">一键跑通真实示例</button>
+            <button id="presetButton" class="button button-secondary" type="button">恢复默认场景</button>
+            <a class="button button-ghost" href="/docs" target="_blank" rel="noreferrer">查看 API 文档</a>
+          </div>
+          <div class="hero-identifiers">
+            <div class="identity-chip">
+              <span>Session</span>
+              <strong id="sessionChip">未创建</strong>
+            </div>
+            <div class="identity-chip">
+              <span>Knowledge</span>
+              <strong id="knowledgeChip">未生成</strong>
+            </div>
+            <div class="identity-chip">
+              <span>Request</span>
+              <strong id="requestChip">未检索</strong>
+            </div>
+          </div>
+        </div>
+        <aside class="hero-stack">
+          <section class="hero-card status-card">
+            <div class="section-kicker">服务状态</div>
+            <div class="status-grid">
+              <div>
+                <span class="status-label">健康</span>
+                <strong id="healthStatus">待检测</strong>
+              </div>
+              <div>
+                <span class="status-label">LLM</span>
+                <strong id="llmStatus">待检测</strong>
+              </div>
+              <div>
+                <span class="status-label">向量后端</span>
+                <strong id="vectorStatus">待检测</strong>
+              </div>
+              <div>
+                <span class="status-label">版本</span>
+                <strong id="versionStatus">待检测</strong>
+              </div>
+            </div>
+          </section>
+          <section class="hero-card scenario-card">
+            <div class="section-kicker">推荐演示场景</div>
+            <p class="scenario-title">订单风控规则接入与回归治理</p>
+            <p class="scenario-copy">
+              适合验证中文抽取、路径规则覆盖、审核流与上下文包召回。默认会在
+              <code>src/order/risk/check.ts</code> 上构造两个事件并创建路径级规则。
+            </p>
+            <ul class="scenario-points">
+              <li>场景文本使用中文，验证 LLM 抽取语言稳定性</li>
+              <li>检索阶段同时命中配置规则与知识条目</li>
+              <li>审计日志会记录租户、团队、用户与客户端信息</li>
+            </ul>
+          </section>
+        </aside>
+      </header>
+
+      <main class="workspace">
+        <section class="left-rail" data-reveal>
+          <div class="surface surface-compact">
+            <div class="surface-header">
+              <div>
+                <p class="eyebrow">Connection</p>
+                <h2>连接与身份</h2>
+              </div>
+              <button id="healthButton" class="button button-secondary" type="button">刷新健康状态</button>
+            </div>
+            <form class="stack-form" onsubmit="return false;">
+              <div class="form-grid">
+                <label>
+                  <span>API Base URL</span>
+                  <input id="baseUrlInput" type="text" placeholder="默认使用当前站点" />
+                </label>
+                <label>
+                  <span>API Key</span>
+                  <input id="apiKeyInput" type="password" placeholder="可留空" autocomplete="current-password" />
+                </label>
+                <label>
+                  <span>Tenant</span>
+                  <input id="tenantInput" type="text" />
+                </label>
+                <label>
+                  <span>Team</span>
+                  <input id="teamInput" type="text" />
+                </label>
+                <label>
+                  <span>User</span>
+                  <input id="userInput" type="text" autocomplete="username" />
+                </label>
+                <label>
+                  <span>Client Type</span>
+                  <input id="clientTypeInput" type="text" />
+                </label>
+              </div>
+              <div class="button-row">
+                <button id="saveConfigButton" class="button button-secondary" type="button">保存本地配置</button>
+                <button id="verifyLlmButton" class="button button-primary" type="button">验证 LLM</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="surface">
+            <div class="surface-header">
+              <div>
+                <p class="eyebrow">Scenario</p>
+                <h2>真实场景输入</h2>
+              </div>
+              <span class="surface-tag">支持逐步操作</span>
+            </div>
+            <div class="form-grid">
+              <label>
+                <span>Repo ID</span>
+                <input id="repoIdInput" type="text" />
+              </label>
+              <label>
+                <span>Branch</span>
+                <input id="branchInput" type="text" />
+              </label>
+              <label>
+                <span>Task ID</span>
+                <input id="taskIdInput" type="text" />
+              </label>
+              <label>
+                <span>Scope Path</span>
+                <input id="pathInput" type="text" />
+              </label>
+            </div>
+            <label>
+              <span>配置规则</span>
+              <textarea id="profileInstructionInput" rows="3"></textarea>
+            </label>
+            <label>
+              <span>事件 1: Prompt 摘要</span>
+              <textarea id="eventOneInput" rows="4"></textarea>
+            </label>
+            <label>
+              <span>事件 2: Test Result 摘要</span>
+              <textarea id="eventTwoInput" rows="4"></textarea>
+            </label>
+            <label>
+              <span>检索问题</span>
+              <textarea id="queryInput" rows="3"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="main-stage">
+          <section class="surface workflow-surface" data-reveal>
+            <div class="surface-header">
+              <div>
+                <p class="eyebrow">Workflow</p>
+                <h2>业务链路编排</h2>
+              </div>
+              <span class="surface-tag" id="workflowBadge">等待执行</span>
+            </div>
+            <div class="workflow-grid">
+              <button id="profileButton" class="workflow-step" type="button">
+                <span class="step-index">01</span>
+                <strong>创建路径规则</strong>
+                <span>写入配置中心</span>
+              </button>
+              <button id="sessionButton" class="workflow-step" type="button">
+                <span class="step-index">02</span>
+                <strong>创建会话</strong>
+                <span>绑定租户与成员</span>
+              </button>
+              <button id="eventsButton" class="workflow-step" type="button">
+                <span class="step-index">03</span>
+                <strong>上报事件</strong>
+                <span>形成知识信号</span>
+              </button>
+              <button id="extractButton" class="workflow-step" type="button">
+                <span class="step-index">04</span>
+                <strong>抽取知识</strong>
+                <span>LLM 或启发式回退</span>
+              </button>
+              <button id="approveButton" class="workflow-step" type="button">
+                <span class="step-index">05</span>
+                <strong>审核通过</strong>
+                <span>将知识激活</span>
+              </button>
+              <button id="retrieveButton" class="workflow-step" type="button">
+                <span class="step-index">06</span>
+                <strong>上下文检索</strong>
+                <span>召回规则与知识</span>
+              </button>
+            </div>
+            <div class="button-row">
+              <button id="feedbackButton" class="button button-secondary" type="button">提交反馈并刷新审计</button>
+              <button id="auditButton" class="button button-ghost" type="button">仅刷新审计日志</button>
+            </div>
+          </section>
+
+          <section class="data-grid">
+            <article class="surface" data-reveal>
+              <div class="surface-header">
+                <div>
+                  <p class="eyebrow">Knowledge</p>
+                  <h2>抽取结果</h2>
+                </div>
+                <span class="surface-tag" id="knowledgeStatusTag">未生成</span>
+              </div>
+              <div id="knowledgeSummary" class="empty-state">运行抽取后，这里会显示标题、类型、作用域和摘要。</div>
+              <pre id="knowledgeJson" class="json-block">暂无数据</pre>
+            </article>
+
+            <article class="surface" data-reveal>
+              <div class="surface-header">
+                <div>
+                  <p class="eyebrow">Retrieval</p>
+                  <h2>上下文包</h2>
+                </div>
+                <span class="surface-tag" id="retrievalStatusTag">未检索</span>
+              </div>
+              <div id="retrievalSummary" class="empty-state">执行检索后，这里会显示 context summary、规则命中和知识命中。</div>
+              <pre id="retrievalJson" class="json-block">暂无数据</pre>
+            </article>
+
+            <article class="surface" data-reveal>
+              <div class="surface-header">
+                <div>
+                  <p class="eyebrow">Audit</p>
+                  <h2>审计轨迹</h2>
+                </div>
+                <span class="surface-tag">最近 12 条</span>
+              </div>
+              <div id="auditSummary" class="empty-state">完成操作后，这里会显示最近的审计动作。</div>
+              <pre id="auditJson" class="json-block">暂无数据</pre>
+            </article>
+
+            <article class="surface surface-terminal" data-reveal>
+              <div class="surface-header">
+                <div>
+                  <p class="eyebrow">Activity</p>
+                  <h2>执行日志</h2>
+                </div>
+                <span class="surface-tag">实时</span>
+              </div>
+              <ul id="activityLog" class="activity-log">
+                <li class="activity-item activity-item-muted">控制台已加载。先刷新健康状态，或直接运行一键示例。</li>
+              </ul>
+            </article>
+
+            <article class="surface" data-reveal>
+              <div class="surface-header">
+                <div>
+                  <p class="eyebrow">Response</p>
+                  <h2>最近一次响应</h2>
+                </div>
+                <span class="surface-tag" id="responseTag">空闲</span>
+              </div>
+              <pre id="responseJson" class="json-block">暂无数据</pre>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/static/console/main.js"></script>
+  </body>
+</html>

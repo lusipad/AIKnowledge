@@ -44,7 +44,7 @@ def load_settings() -> AppSettings:
 
     return AppSettings(
         app_name='AI Coding Knowledge & Memory MVP',
-        app_version='0.4.0',
+        app_version='0.5.0',
         db_url=os.getenv('AICODING_DB_URL', 'sqlite:///./aicoding_mvp.db'),
         vector_backend=vector_backend,
         api_key=os.getenv('AICODING_API_KEY') or None,

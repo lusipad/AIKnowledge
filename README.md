@@ -15,6 +15,7 @@
 - 知识反馈与上下文包反馈
 - 审计日志查询
 - 本地 HTTP 客户端与 demo 链路
+- 浏览器控制台与一键真实场景演示
 - 自动化端到端测试
 - Docker 部署文件与 demo 脚本
 - PostgreSQL 连接配置
@@ -50,6 +51,8 @@
 - `scripts/demo_flow.py`：本地演示脚本
 - `scripts/http_client.py`：HTTP 客户端命令行
 - `scripts/verify_llm.py`：LLM 验证脚本
+- `app/static/console/`：浏览器控制台静态前端
+- `app/routers/ui.py`：控制台路由与 favicon
 - `.github/workflows/ci.yml`：CI 工作流
 - `docs/`：Proposal、架构、PRD、API、DB、MVP 文档
 
@@ -148,6 +151,22 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 make demo
 ```
 
+推荐直接打开浏览器控制台：
+
+- `http://127.0.0.1:8000/console`
+
+控制台支持：
+
+- 一键跑通“订单风控规则接入与回归治理”真实示例
+- 手动逐步执行：配置规则、创建会话、上报事件、抽取知识、审核、检索、反馈、查看审计
+
+控制台会直接调用当前服务 API，并透传：
+
+- `X-Tenant-Id`
+- `X-Team-Id`
+- `X-User-Id`
+- `X-Client-Type`
+
 如果服务已经启动，也可以走真实 HTTP 链路：
 
 ```bash
@@ -177,10 +196,12 @@ docker compose up --build
 
 - `http://127.0.0.1:8000`
 - `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8000/console`
 
 ## 健康检查
 
 - `GET /healthz`
+- `GET /readyz`
 
 返回内容包括：
 
@@ -235,6 +256,8 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 - `POST /api/v1/feedback/knowledge`
 - `POST /api/v1/feedback/context-pack`
 - `GET /api/v1/audit/logs`
+- `GET /console`
+- `GET /readyz`
 
 ## 请求上下文
 
