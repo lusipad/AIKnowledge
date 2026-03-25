@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_db
 from app.models import ConversationSession, KnowledgeSignal, SessionEvent
 from app.schemas import SessionCreateRequest
+from app.services.isolation import apply_session_scope
 from app.services.use_cases import create_session_data
 from app.utils import api_response
 
@@ -43,11 +44,13 @@ def list_sessions(
     count_statement = select(func.count()).select_from(ConversationSession)
     if filters:
         count_statement = count_statement.where(*filters)
+    count_statement = apply_session_scope(count_statement)
     total = database.scalar(count_statement) or 0
 
     statement = select(ConversationSession).order_by(ConversationSession.started_at.desc())
     if filters:
         statement = statement.where(*filters)
+    statement = apply_session_scope(statement)
     statement = statement.offset((normalized_page - 1) * normalized_page_size).limit(normalized_page_size)
 
     sessions = database.scalars(statement).all()
@@ -101,7 +104,7 @@ def list_sessions(
 
 @router.get("/sessions/{session_id}")
 def get_session(session_id: str, database: Session = Depends(get_db)):
-    session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == session_id))
+    session = database.scalar(apply_session_scope(select(ConversationSession).where(ConversationSession.session_id == session_id)))
     if not session:
         raise HTTPException(status_code=404, detail="session not found")
     return api_response(

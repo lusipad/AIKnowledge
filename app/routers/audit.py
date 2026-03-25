@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import AuditLog
+from app.services.isolation import apply_audit_scope
 from app.utils import api_response
 
 
@@ -17,11 +18,12 @@ def list_audit_logs(
     limit: int = 100,
     database: Session = Depends(get_db),
 ):
-    statement = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(max(1, min(limit, 500)))
+    statement = apply_audit_scope(select(AuditLog).order_by(AuditLog.created_at.desc()))
     if action:
         statement = statement.where(AuditLog.action == action)
     if resource_type:
         statement = statement.where(AuditLog.resource_type == resource_type)
+    statement = statement.limit(max(1, min(limit, 500)))
 
     logs = database.scalars(statement).all()
     return api_response(

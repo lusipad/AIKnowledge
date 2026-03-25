@@ -11,6 +11,7 @@ from app.models import (
 from app.request_context import get_request_context
 from app.schemas import ExtractRequest, KnowledgeDeprecateRequest, KnowledgeUpdateRequest, ReviewRequest
 from app.services.audit import append_audit_log
+from app.services.isolation import apply_knowledge_scope
 from app.services.use_cases import (
     InvalidOperationError,
     ResourceNotFoundError,
@@ -63,7 +64,7 @@ def list_knowledge(
     page_size: int = 20,
     database: Session = Depends(get_db),
 ):
-    statement = select(KnowledgeItem).order_by(KnowledgeItem.updated_at.desc())
+    statement = apply_knowledge_scope(select(KnowledgeItem).order_by(KnowledgeItem.updated_at.desc()))
     if scope_type:
         statement = statement.where(KnowledgeItem.scope_type == scope_type)
     if scope_id:
@@ -122,7 +123,7 @@ def get_knowledge(knowledge_id: str, database: Session = Depends(get_db)):
 @router.patch("/knowledge/{knowledge_id}")
 def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, database: Session = Depends(get_db)):
     request_context = get_request_context()
-    knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id))
+    knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
 
@@ -165,7 +166,7 @@ def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, databas
 @router.post("/knowledge/{knowledge_id}/deprecate")
 def deprecate_knowledge(knowledge_id: str, payload: KnowledgeDeprecateRequest, database: Session = Depends(get_db)):
     request_context = get_request_context()
-    knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id))
+    knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
 
@@ -194,7 +195,7 @@ def deprecate_knowledge(knowledge_id: str, payload: KnowledgeDeprecateRequest, d
 
 @router.get("/knowledge/{knowledge_id}/reviews")
 def list_knowledge_reviews(knowledge_id: str, database: Session = Depends(get_db)):
-    knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id))
+    knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
 

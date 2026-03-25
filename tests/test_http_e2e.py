@@ -233,6 +233,31 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         self.assertEqual(audit_logs_response.json()['request_id'], 'req_http_e2e_001')
         self.assertEqual(audit_logs_response.json()['data'][0]['detail']['tenant_id'], 'tenant-demo')
 
+        foreign_headers = {
+            'X-Request-Id': 'req_http_e2e_002',
+            'X-Tenant-Id': 'tenant-other',
+            'X-Team-Id': 'team-other',
+            'X-User-Id': 'user-other',
+            'X-Client-Type': 'agent',
+        }
+        foreign_sessions = self.client.get(
+            '/api/v1/sessions',
+            params={'repo_id': 'demo-repo', 'page': 1, 'page_size': 10},
+            headers=foreign_headers,
+        )
+        self.assertEqual(foreign_sessions.status_code, 200)
+        self.assertEqual(foreign_sessions.json()['data']['total'], 0)
+
+        foreign_retrieval_log = self.client.get(
+            f'/api/v1/retrieval/logs/{request_id}',
+            headers=foreign_headers,
+        )
+        self.assertEqual(foreign_retrieval_log.status_code, 404)
+
+        foreign_audit_logs = self.client.get('/api/v1/audit/logs', headers=foreign_headers)
+        self.assertEqual(foreign_audit_logs.status_code, 200)
+        self.assertEqual(len(foreign_audit_logs.json()['data']), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

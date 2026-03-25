@@ -22,6 +22,7 @@ from app.schemas import (
     SessionCreateRequest,
 )
 from app.services.llm_validation import verify_llm_connection
+from app.services.isolation import apply_evaluation_scope
 from app.services.use_cases import (
     append_context_events_data,
     create_extract_task_data,
@@ -135,13 +136,13 @@ def _normalize_report(run: EvaluationRun) -> dict[str, Any]:
 
 def list_evaluation_runs(database: Session, *, limit: int = 20) -> list[dict[str, Any]]:
     runs = database.scalars(
-        select(EvaluationRun).order_by(EvaluationRun.created_at.desc()).limit(max(1, min(limit, 100)))
+        apply_evaluation_scope(select(EvaluationRun).order_by(EvaluationRun.created_at.desc())).limit(max(1, min(limit, 100)))
     ).all()
     return [_normalize_report(run) for run in runs]
 
 
 def get_evaluation_run(database: Session, run_id: str) -> dict[str, Any] | None:
-    run = database.scalar(select(EvaluationRun).where(EvaluationRun.run_id == run_id))
+    run = database.scalar(apply_evaluation_scope(select(EvaluationRun).where(EvaluationRun.run_id == run_id)))
     if not run:
         return None
     return _normalize_report(run)

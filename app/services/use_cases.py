@@ -33,6 +33,7 @@ from app.schemas import (
 from app.services.audit import append_audit_log
 from app.services.extraction import extract_knowledge_draft
 from app.services.freshness import apply_knowledge_freshness_updates
+from app.services.isolation import apply_knowledge_scope, apply_retrieval_request_scope, apply_session_scope
 from app.services.retrieval import (
     build_context_summary,
     dedupe_ranked_entries,
@@ -553,7 +554,7 @@ def get_extract_task_data(task_id: str, database: Session) -> dict:
 
 
 def get_knowledge_data(knowledge_id: str, database: Session) -> dict:
-    knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id))
+    knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
         raise ResourceNotFoundError('knowledge not found')
 
@@ -618,7 +619,9 @@ def review_knowledge_data(payload: ReviewRequest, database: Session) -> dict:
 def build_context_pack_data(database: Session, payload: RetrievalQueryRequest, *, persist: bool) -> tuple[dict, dict, str]:
     request_id = generate_id('ret')
     if payload.session_id:
-        session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == payload.session_id))
+        session = database.scalar(
+            apply_session_scope(select(ConversationSession).where(ConversationSession.session_id == payload.session_id))
+        )
         if persist and not session:
             raise ResourceNotFoundError('session not found')
     if persist:
@@ -800,7 +803,9 @@ def submit_context_pack_feedback_data(
     request_context: RequestContext | None = None,
 ) -> dict:
     current_context = _resolve_request_context(request_context)
-    request = database.scalar(select(RetrievalRequest).where(RetrievalRequest.request_id == payload.request_id))
+    request = database.scalar(
+        apply_retrieval_request_scope(select(RetrievalRequest).where(RetrievalRequest.request_id == payload.request_id), current_context)
+    )
     if not request:
         raise ResourceNotFoundError('retrieval request not found')
 

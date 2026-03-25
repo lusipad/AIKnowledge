@@ -7,6 +7,7 @@ from app.models import ConfigProfile, ConfigProfileVersion
 from app.request_context import get_request_context
 from app.schemas import ConfigProfileUpsertRequest, ConfigRollbackRequest
 from app.services.audit import append_audit_log
+from app.services.isolation import apply_config_scope
 from app.services.use_cases import upsert_profile_data
 from app.utils import api_response
 
@@ -32,7 +33,7 @@ def get_profiles(
     profile_type: str | None = None,
     database: Session = Depends(get_db),
 ):
-    statement = select(ConfigProfile).order_by(ConfigProfile.updated_at.desc())
+    statement = apply_config_scope(select(ConfigProfile).order_by(ConfigProfile.updated_at.desc()))
     if scope_type:
         statement = statement.where(ConfigProfile.scope_type == scope_type)
     if scope_id:
@@ -59,7 +60,7 @@ def get_profiles(
 
 @router.get("/config/profile/{profile_id}")
 def get_profile(profile_id: str, database: Session = Depends(get_db)):
-    profile = database.scalar(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id))
+    profile = database.scalar(apply_config_scope(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id)))
     if not profile:
         raise HTTPException(status_code=404, detail="profile not found")
 
@@ -91,7 +92,7 @@ def upsert_profile(profile_id: str, payload: ConfigProfileUpsertRequest, databas
 @router.post("/config/profile/{profile_id}/rollback")
 def rollback_profile(profile_id: str, payload: ConfigRollbackRequest, database: Session = Depends(get_db)):
     request_context = get_request_context()
-    profile = database.scalar(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id))
+    profile = database.scalar(apply_config_scope(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id)))
     if not profile:
         raise HTTPException(status_code=404, detail="profile not found")
 

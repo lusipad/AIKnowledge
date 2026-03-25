@@ -86,6 +86,23 @@ class EvaluationApiTestCase(unittest.TestCase):
         self.assertEqual(detail_payload['scenario']['scenario_id'], 'order_risk_regression_zh')
         self.assertIn('audit_context_propagated', [item['check_id'] for item in detail_payload['checks']])
 
+        foreign_headers = {
+            'X-Request-Id': 'req_eval_002',
+            'X-Tenant-Id': 'tenant-other',
+            'X-Team-Id': 'team-other',
+            'X-User-Id': 'user-other',
+            'X-Client-Type': 'console',
+        }
+        foreign_history_response = self.client.get('/api/v1/evaluation/runs', headers=foreign_headers)
+        self.assertEqual(foreign_history_response.status_code, 200)
+        self.assertEqual(foreign_history_response.json()['data']['items'], [])
+
+        foreign_detail_response = self.client.get(
+            f"/api/v1/evaluation/runs/{run_payload['run_id']}",
+            headers=foreign_headers,
+        )
+        self.assertEqual(foreign_detail_response.status_code, 404)
+
 
 if __name__ == '__main__':
     unittest.main()
