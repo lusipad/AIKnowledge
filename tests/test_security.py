@@ -10,6 +10,9 @@ class SecurityTestCase(unittest.TestCase):
     def test_exempt_paths(self):
         self.assertTrue(is_exempt_path('/'))
         self.assertTrue(is_exempt_path('/healthz'))
+        self.assertTrue(is_exempt_path('/readyz'))
+        self.assertTrue(is_exempt_path('/console'))
+        self.assertTrue(is_exempt_path('/static/console/main.js'))
         self.assertTrue(is_exempt_path('/docs'))
         self.assertFalse(is_exempt_path('/api/v1/sessions'))
 

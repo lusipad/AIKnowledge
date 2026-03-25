@@ -8,17 +8,28 @@ from starlette.responses import JSONResponse
 EXEMPT_PATHS = {
     '/',
     '/healthz',
+    '/readyz',
+    '/console',
+    '/console/',
     '/docs',
     '/openapi.json',
     '/redoc',
+    '/favicon.ico',
 }
+
+EXEMPT_PREFIXES = (
+    '/docs',
+    '/redoc',
+    '/openapi',
+    '/static/console/',
+)
 
 
 
 def is_exempt_path(path: str) -> bool:
     if path in EXEMPT_PATHS:
         return True
-    return path.startswith('/docs') or path.startswith('/redoc') or path.startswith('/openapi')
+    return any(path.startswith(prefix) for prefix in EXEMPT_PREFIXES)
 
 
 
