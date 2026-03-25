@@ -16,6 +16,7 @@
 - 上下文事件上报
 - 基于启发式规则的知识信号识别
 - 可选 LLM 增强的知识抽取任务创建与查询
+- 可选 DB-backed 异步抽取队列与 worker
 - 知识审核、更新、下线、查询
 - 基础配置中心与版本回滚
 - 检索排序、规则去重与上下文包返回
@@ -65,6 +66,7 @@
 - `scripts/http_client.py`：HTTP 客户端命令行
 - `scripts/verify_llm.py`：LLM 验证脚本
 - `scripts/check_schema_drift.py`：数据库 schema drift 校验脚本
+- `scripts/run_extract_worker.py`：抽取任务 worker 脚本
 - `scripts/evaluate_system.py`：通过 HTTP 触发系统评估并输出 Markdown / JSON 报告
 - `app/static/console/`：浏览器控制台静态前端
 - `app/routers/ui.py`：控制台路由与 favicon
@@ -110,6 +112,7 @@ make init-db
 ```bash
 export AICODING_DB_URL='sqlite:///./runtime/dev.db'
 export AICODING_VECTOR_BACKEND='simple'
+export AICODING_EXTRACTION_MODE='sync'
 export AICODING_API_KEY='your-secret'
 export AICODING_API_BASE_URL='http://127.0.0.1:8000'
 export AICODING_LLM_BASE_URL='https://api.openai.com'
@@ -316,6 +319,31 @@ python3 scripts/check_schema_drift.py
 
 `/healthz` 与 `/readyz` 也会返回 `schema.ok` 和 drift 明细，便于探针、发布前检查和 CI 判定。
 
+## 异步抽取 Worker
+
+默认抽取模式为 `sync`，便于本地 demo 和测试直接跑通。
+
+如需启用 DB-backed 异步抽取队列：
+
+```bash
+export AICODING_EXTRACTION_MODE='async'
+python3 -m uvicorn app.main:app --reload
+```
+
+然后运行 worker：
+
+```bash
+make run-extract-worker
+```
+
+或：
+
+```bash
+python3 scripts/run_extract_worker.py --loop --poll-sec 2
+```
+
+在 `async` 模式下，`POST /api/v1/knowledge/extract` 会先返回 `pending` 任务，再由 worker 消费并更新为 `success`。
+
 ## 已实现核心接口
 
 - `POST /api/v1/sessions`
@@ -382,7 +410,6 @@ python3 scripts/check_schema_drift.py
 
 - 当前版本默认服务于 `单团队 / 单仓库` 试点场景，尚未实现真实多租户隔离与跨团队权限裁剪
 - 向量检索目前是简单关键词向量后端，不是真实 embedding / pgvector 检索
-- 抽取链路支持可选 LLM 增强，但当前仍是同步执行，尚未接入队列和异步 worker
 - 权限和敏感信息控制仍是基础骨架，当前仅支持单一 API Key
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast

@@ -41,6 +41,7 @@ class SecurityTestCase(unittest.TestCase):
     def test_load_settings_defaults(self):
         settings = load_settings()
         self.assertIn(settings.vector_backend, {'simple', 'keyword', 'simple-keyword', 'pgvector', 'postgres'})
+        self.assertIn(settings.extraction_mode, {'sync', 'async'})
 
 
 if __name__ == '__main__':

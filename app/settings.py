@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 
 ALLOWED_VECTOR_BACKENDS = {'simple', 'keyword', 'simple-keyword', 'pgvector', 'postgres'}
+ALLOWED_EXTRACTION_MODES = {'sync', 'async'}
 
 
 def _normalize_llm_chat_path(path: str | None) -> str:
@@ -19,6 +20,7 @@ class AppSettings:
     app_version: str
     db_url: str
     vector_backend: str
+    extraction_mode: str
     api_key: str | None
     env: str
     llm_base_url: str | None
@@ -41,12 +43,16 @@ def load_settings() -> AppSettings:
     vector_backend = os.getenv('AICODING_VECTOR_BACKEND', 'simple').lower()
     if vector_backend not in ALLOWED_VECTOR_BACKENDS:
         raise ValueError(f'Unsupported vector backend: {vector_backend}')
+    extraction_mode = os.getenv('AICODING_EXTRACTION_MODE', 'sync').lower()
+    if extraction_mode not in ALLOWED_EXTRACTION_MODES:
+        raise ValueError(f'Unsupported extraction mode: {extraction_mode}')
 
     return AppSettings(
         app_name='AI Coding Knowledge & Memory MVP',
         app_version='0.7.0',
         db_url=os.getenv('AICODING_DB_URL', 'sqlite:///./aicoding_mvp.db'),
         vector_backend=vector_backend,
+        extraction_mode=extraction_mode,
         api_key=os.getenv('AICODING_API_KEY') or None,
         env=os.getenv('AICODING_ENV', 'dev'),
         llm_base_url=(os.getenv('AICODING_LLM_BASE_URL') or '').rstrip('/') or None,

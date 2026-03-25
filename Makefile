@@ -13,6 +13,9 @@ demo:
 client-demo:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/http_client.py demo
 
+run-extract-worker:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/run_extract_worker.py
+
 verify-llm:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/verify_llm.py
 

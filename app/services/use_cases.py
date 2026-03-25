@@ -248,28 +248,76 @@ def upsert_profile_data(
     }
 
 
-def _build_knowledge_from_signal(database: Session, signal: KnowledgeSignal) -> tuple[KnowledgeCandidate, ExtractTask, KnowledgeItem]:
+def _load_signal_context(
+    database: Session,
+    signal: KnowledgeSignal,
+) -> tuple[ConversationSession | None, list[SessionEvent], str]:
     session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == signal.session_id))
     events = database.scalars(
         select(SessionEvent).where(SessionEvent.session_id == signal.session_id).order_by(SessionEvent.event_time.desc()).limit(10)
     ).all()
     joined_summary = '\n'.join(event.summary for event in reversed(events)) or signal.source_refs.get('summary', '')
-    extraction = extract_knowledge_draft(signal, session, events, settings=load_settings())
+    return session, events, joined_summary
+
+
+def _create_candidate_from_signal(database: Session, signal: KnowledgeSignal) -> KnowledgeCandidate:
+    session, _, joined_summary = _load_signal_context(database, signal)
     candidate = KnowledgeCandidate(
         candidate_id=generate_id('cand'),
         signal_id=signal.signal_id,
-        candidate_type=extraction.knowledge_type,
+        candidate_type=signal.signal_type if signal.signal_type in {'rule', 'case', 'procedure'} else 'rule',
         summary=joined_summary[:1500],
         scope_hint={
-            'scope_type': extraction.content.get('scope_type', 'repo'),
-            'scope_id': extraction.content.get('scope_id', session.repo_id if session else 'global'),
+            'scope_type': 'repo' if session else 'global',
+            'scope_id': session.repo_id if session else 'global',
         },
-        quality_score=extraction.quality_score,
-        extract_prompt_version=extraction.prompt_version,
-        status='reviewing',
+        quality_score=float(signal.confidence),
+        extract_prompt_version='queued',
+        status='pending',
     )
     database.add(candidate)
     database.flush()
+    return candidate
+
+
+def _create_extract_task_record(
+    database: Session,
+    candidate: KnowledgeCandidate,
+    *,
+    settings,
+) -> ExtractTask:
+    task = ExtractTask(
+        task_id=generate_id('ext'),
+        candidate_id=candidate.candidate_id,
+        status='pending',
+        model_name=settings.llm_model or 'heuristic-extractor',
+        prompt_version='queued',
+        result_ref=None,
+    )
+    database.add(task)
+    database.flush()
+    return task
+
+
+def _execute_extract_task(
+    database: Session,
+    *,
+    signal: KnowledgeSignal,
+    candidate: KnowledgeCandidate,
+    task: ExtractTask,
+    settings,
+    actor_id: str,
+) -> KnowledgeItem:
+    session, events, _ = _load_signal_context(database, signal)
+    extraction = extract_knowledge_draft(signal, session, events, settings=settings)
+    candidate.candidate_type = extraction.knowledge_type
+    candidate.scope_hint = {
+        'scope_type': extraction.content.get('scope_type', 'repo'),
+        'scope_id': extraction.content.get('scope_id', session.repo_id if session else 'global'),
+    }
+    candidate.quality_score = extraction.quality_score
+    candidate.extract_prompt_version = extraction.prompt_version
+    candidate.status = 'reviewing'
 
     knowledge = KnowledgeItem(
         knowledge_id=generate_id('kn'),
@@ -299,18 +347,23 @@ def _build_knowledge_from_signal(database: Session, signal: KnowledgeSignal) -> 
         )
     )
 
-    task = ExtractTask(
-        task_id=generate_id('ext'),
-        candidate_id=candidate.candidate_id,
-        status='success',
-        model_name=extraction.model_name,
-        prompt_version=extraction.prompt_version,
-        result_ref=knowledge.knowledge_id,
-    )
-    database.add(task)
-
+    task.status = 'success'
+    task.model_name = extraction.model_name
+    task.prompt_version = extraction.prompt_version
+    task.result_ref = knowledge.knowledge_id
+    task.error_message = None
     signal.status = 'processed'
-    return candidate, task, knowledge
+    append_audit_log(
+        database,
+        actor_id=actor_id,
+        action='knowledge.extract',
+        resource_type='knowledge',
+        resource_id=knowledge.knowledge_id,
+        scope_type=knowledge.scope_type,
+        scope_id=knowledge.scope_id,
+        detail={'signal_id': signal.signal_id, 'candidate_id': candidate.candidate_id, 'task_id': task.task_id},
+    )
+    return knowledge
 
 
 def _find_existing_extract_result(database: Session, signal_id: str) -> tuple[KnowledgeCandidate, ExtractTask] | None:
@@ -328,6 +381,83 @@ def _find_existing_extract_result(database: Session, signal_id: str) -> tuple[Kn
     return candidate, task
 
 
+def process_extract_task_data(
+    task_id: str,
+    database: Session,
+    *,
+    request_context: RequestContext | None = None,
+) -> dict:
+    current_context = _resolve_request_context(request_context)
+    task = database.scalar(select(ExtractTask).where(ExtractTask.task_id == task_id))
+    if not task:
+        raise ResourceNotFoundError('extract task not found')
+
+    candidate = database.scalar(select(KnowledgeCandidate).where(KnowledgeCandidate.candidate_id == task.candidate_id))
+    if not candidate:
+        raise ResourceNotFoundError('extract candidate not found')
+
+    signal = database.scalar(select(KnowledgeSignal).where(KnowledgeSignal.signal_id == candidate.signal_id))
+    if not signal:
+        raise ResourceNotFoundError('signal not found')
+
+    if task.status == 'success':
+        return {
+            'task_id': task.task_id,
+            'candidate_id': task.candidate_id,
+            'status': task.status,
+            'knowledge_id': task.result_ref,
+        }
+    if task.status == 'running':
+        raise InvalidOperationError('extract task is already running')
+
+    settings = load_settings()
+    task.status = 'running'
+    database.flush()
+    try:
+        knowledge = _execute_extract_task(
+            database,
+            signal=signal,
+            candidate=candidate,
+            task=task,
+            settings=settings,
+            actor_id=current_context.user_id or 'system',
+        )
+        database.flush()
+    except Exception as exc:
+        task.status = 'error'
+        task.error_message = str(exc)
+        database.flush()
+        raise
+
+    return {
+        'task_id': task.task_id,
+        'candidate_id': task.candidate_id,
+        'status': task.status,
+        'knowledge_id': knowledge.knowledge_id,
+    }
+
+
+def process_pending_extract_tasks_data(
+    database: Session,
+    *,
+    limit: int = 20,
+    request_context: RequestContext | None = None,
+) -> dict:
+    task_ids = [
+        task_id
+        for task_id in database.scalars(
+            select(ExtractTask.task_id)
+            .where(ExtractTask.status == 'pending')
+            .order_by(ExtractTask.created_at.asc())
+            .limit(max(1, min(limit, 100)))
+        ).all()
+    ]
+    processed: list[dict] = []
+    for task_id in task_ids:
+        processed.append(process_extract_task_data(task_id, database, request_context=request_context))
+    return {'processed_count': len(processed), 'items': processed}
+
+
 def create_extract_task_data(
     payload: ExtractRequest,
     database: Session,
@@ -335,6 +465,7 @@ def create_extract_task_data(
     request_context: RequestContext | None = None,
 ) -> dict:
     current_context = _resolve_request_context(request_context)
+    settings = load_settings()
     signals = database.scalars(select(KnowledgeSignal).where(KnowledgeSignal.signal_id.in_(payload.signal_ids))).all()
     signal_order = {signal_id: index for index, signal_id in enumerate(payload.signal_ids)}
     signals.sort(key=lambda signal: signal_order.get(signal.signal_id, len(signal_order)))
@@ -358,24 +489,44 @@ def create_extract_task_data(
             )
             continue
 
-        candidate, task, knowledge = _build_knowledge_from_signal(database, signal)
+        session, _, _ = _load_signal_context(database, signal)
+        candidate = _create_candidate_from_signal(database, signal)
+        task = _create_extract_task_record(database, candidate, settings=settings)
         append_audit_log(
             database,
             actor_id=current_context.user_id or 'system',
-            action='knowledge.extract',
-            resource_type='knowledge',
-            resource_id=knowledge.knowledge_id,
-            scope_type=knowledge.scope_type,
-            scope_id=knowledge.scope_id,
-            detail={'signal_id': signal.signal_id, 'candidate_id': candidate.candidate_id, 'task_id': task.task_id},
+            action='knowledge.extract.enqueue',
+            resource_type='extract_task',
+            resource_id=task.task_id,
+            scope_type='repo',
+            scope_id=session.repo_id if session else None,
+            detail={'signal_id': signal.signal_id, 'candidate_id': candidate.candidate_id},
+        )
+
+        knowledge_id = None
+        status = task.status
+        if settings.extraction_mode == 'sync':
+            processed = process_extract_task_data(task.task_id, database, request_context=request_context)
+            knowledge_id = processed['knowledge_id']
+            status = processed['status']
+
+        append_audit_log(
+            database,
+            actor_id=current_context.user_id or 'system',
+            action='knowledge.extract.create_task',
+            resource_type='extract_task',
+            resource_id=task.task_id,
+            scope_type='repo',
+            scope_id=session.repo_id if session else None,
+            detail={'signal_id': signal.signal_id, 'candidate_id': candidate.candidate_id, 'mode': settings.extraction_mode},
         )
         created_items.append(
             {
                 'signal_id': signal.signal_id,
                 'candidate_id': candidate.candidate_id,
                 'task_id': task.task_id,
-                'knowledge_id': knowledge.knowledge_id,
-                'status': task.status,
+                'knowledge_id': knowledge_id,
+                'status': status,
                 'deduplicated': False,
             }
         )

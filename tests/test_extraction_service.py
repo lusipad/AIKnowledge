@@ -29,6 +29,7 @@ def _build_settings(**overrides) -> AppSettings:
         'app_version': '0.4.0',
         'db_url': 'sqlite:///:memory:',
         'vector_backend': 'simple',
+        'extraction_mode': 'sync',
         'api_key': None,
         'env': 'test',
         'llm_base_url': 'https://example.com',
