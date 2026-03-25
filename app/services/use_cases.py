@@ -33,7 +33,12 @@ from app.schemas import (
 from app.services.audit import append_audit_log
 from app.services.extraction import extract_knowledge_draft
 from app.services.freshness import apply_knowledge_freshness_updates
-from app.services.isolation import apply_knowledge_scope, apply_retrieval_request_scope, apply_session_scope
+from app.services.isolation import (
+    apply_config_scope,
+    apply_knowledge_scope,
+    apply_retrieval_request_scope,
+    apply_session_scope,
+)
 from app.services.retrieval import (
     build_context_summary,
     dedupe_ranked_entries,
@@ -53,6 +58,10 @@ class ResourceNotFoundError(ValueError):
 
 
 class InvalidOperationError(ValueError):
+    pass
+
+
+class AuthorizationError(ValueError):
     pass
 
 
@@ -79,6 +88,71 @@ def _get_scoped_knowledge(
 ) -> KnowledgeItem | None:
     return database.scalar(
         apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id), request_context)
+    )
+
+
+def _get_scoped_extract_task(
+    database: Session,
+    task_id: str,
+    *,
+    request_context: RequestContext | None = None,
+) -> ExtractTask | None:
+    statement = (
+        select(ExtractTask)
+        .join(KnowledgeCandidate, KnowledgeCandidate.candidate_id == ExtractTask.candidate_id)
+        .join(KnowledgeSignal, KnowledgeSignal.signal_id == KnowledgeCandidate.signal_id)
+        .join(ConversationSession, ConversationSession.session_id == KnowledgeSignal.session_id)
+        .where(ExtractTask.task_id == task_id)
+    )
+    return database.scalar(apply_session_scope(statement, request_context))
+
+
+def _get_scoped_signal_rows(
+    database: Session,
+    signal_ids: list[str],
+    *,
+    request_context: RequestContext | None = None,
+) -> list[KnowledgeSignal]:
+    statement = (
+        select(KnowledgeSignal)
+        .join(ConversationSession, ConversationSession.session_id == KnowledgeSignal.session_id)
+        .where(KnowledgeSignal.signal_id.in_(signal_ids))
+    )
+    return database.scalars(apply_session_scope(statement, request_context)).all()
+
+
+def _assert_profile_scope_writable(
+    *,
+    scope_type: str,
+    scope_id: str,
+    request_context: RequestContext,
+) -> None:
+    if scope_type not in {'global', 'repo', 'path', 'tenant', 'team'}:
+        raise InvalidOperationError('unsupported config scope type')
+
+    if request_context.tenant_id:
+        if scope_type == 'tenant':
+            if scope_id != f'tenant:{request_context.tenant_id}':
+                raise AuthorizationError('tenant scoped profile is not writable in current tenant context')
+            return
+        if scope_type == 'team':
+            if not request_context.team_id:
+                raise AuthorizationError('team scoped profile requires team context')
+            expected_scope_id = f'team:{request_context.tenant_id}:{request_context.team_id}'
+            if scope_id != expected_scope_id:
+                raise AuthorizationError('team scoped profile is not writable in current team context')
+            return
+        raise AuthorizationError('shared global/repo/path profiles require platform context')
+
+    if scope_type in {'tenant', 'team'}:
+        raise AuthorizationError('tenant/team scoped profiles require tenant context')
+
+
+def ensure_profile_writable(profile: ConfigProfile, request_context: RequestContext | None = None) -> None:
+    _assert_profile_scope_writable(
+        scope_type=profile.scope_type,
+        scope_id=profile.scope_id,
+        request_context=_resolve_request_context(request_context),
     )
 
 
@@ -229,8 +303,23 @@ def upsert_profile_data(
     request_context: RequestContext | None = None,
 ) -> dict:
     current_context = _resolve_request_context(request_context)
-    profile = database.scalar(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id))
+    _assert_profile_scope_writable(
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+        request_context=current_context,
+    )
+    profile_exists = database.scalar(select(ConfigProfile.profile_id).where(ConfigProfile.profile_id == profile_id))
+    profile = database.scalar(
+        apply_config_scope(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id), current_context)
+    )
+    if profile_id and profile_exists and not profile:
+        raise ResourceNotFoundError('profile not found')
     if profile:
+        _assert_profile_scope_writable(
+            scope_type=profile.scope_type,
+            scope_id=profile.scope_id,
+            request_context=current_context,
+        )
         profile.scope_type = payload.scope_type
         profile.scope_id = payload.scope_id
         profile.profile_type = payload.profile_type
@@ -274,8 +363,10 @@ def upsert_profile_data(
 def _load_signal_context(
     database: Session,
     signal: KnowledgeSignal,
+    *,
+    request_context: RequestContext | None = None,
 ) -> tuple[ConversationSession | None, list[SessionEvent], str]:
-    session = _get_scoped_session(database, signal.session_id)
+    session = _get_scoped_session(database, signal.session_id, request_context=request_context)
     events = database.scalars(
         select(SessionEvent).where(SessionEvent.session_id == signal.session_id).order_by(SessionEvent.event_time.desc()).limit(10)
     ).all()
@@ -330,8 +421,9 @@ def _execute_extract_task(
     task: ExtractTask,
     settings,
     actor_id: str,
+    request_context: RequestContext | None = None,
 ) -> KnowledgeItem:
-    session, events, _ = _load_signal_context(database, signal)
+    session, events, _ = _load_signal_context(database, signal, request_context=request_context)
     extraction = extract_knowledge_draft(signal, session, events, settings=settings)
     candidate.candidate_type = extraction.knowledge_type
     candidate.scope_hint = {
@@ -345,6 +437,7 @@ def _execute_extract_task(
     knowledge = KnowledgeItem(
         knowledge_id=generate_id('kn'),
         tenant_id=session.tenant_id if session else None,
+        team_id=session.team_id if session else None,
         scope_type=extraction.content.get('scope_type', 'repo' if session else 'global'),
         scope_id=extraction.content.get('scope_id', session.repo_id if session else 'global'),
         knowledge_type=extraction.knowledge_type,
@@ -411,7 +504,7 @@ def process_extract_task_data(
     request_context: RequestContext | None = None,
 ) -> dict:
     current_context = _resolve_request_context(request_context)
-    task = database.scalar(select(ExtractTask).where(ExtractTask.task_id == task_id))
+    task = _get_scoped_extract_task(database, task_id, request_context=current_context)
     if not task:
         raise ResourceNotFoundError('extract task not found')
 
@@ -444,6 +537,7 @@ def process_extract_task_data(
             task=task,
             settings=settings,
             actor_id=current_context.user_id or 'system',
+            request_context=current_context,
         )
         database.flush()
     except Exception as exc:
@@ -489,7 +583,7 @@ def create_extract_task_data(
 ) -> dict:
     current_context = _resolve_request_context(request_context)
     settings = load_settings()
-    signals = database.scalars(select(KnowledgeSignal).where(KnowledgeSignal.signal_id.in_(payload.signal_ids))).all()
+    signals = _get_scoped_signal_rows(database, payload.signal_ids, request_context=current_context)
     signal_order = {signal_id: index for index, signal_id in enumerate(payload.signal_ids)}
     signals.sort(key=lambda signal: signal_order.get(signal.signal_id, len(signal_order)))
     if not signals:
@@ -512,7 +606,7 @@ def create_extract_task_data(
             )
             continue
 
-        session, _, _ = _load_signal_context(database, signal)
+        session, _, _ = _load_signal_context(database, signal, request_context=current_context)
         candidate = _create_candidate_from_signal(database, signal)
         task = _create_extract_task_record(database, candidate, settings=settings)
         append_audit_log(
@@ -558,8 +652,13 @@ def create_extract_task_data(
     return {'items': created_items}
 
 
-def get_extract_task_data(task_id: str, database: Session) -> dict:
-    task = database.scalar(select(ExtractTask).where(ExtractTask.task_id == task_id))
+def get_extract_task_data(
+    task_id: str,
+    database: Session,
+    *,
+    request_context: RequestContext | None = None,
+) -> dict:
+    task = _get_scoped_extract_task(database, task_id, request_context=request_context)
     if not task:
         raise ResourceNotFoundError('extract task not found')
     return {
@@ -638,11 +737,18 @@ def review_knowledge_data(payload: ReviewRequest, database: Session) -> dict:
     return {'knowledge_id': knowledge.knowledge_id, 'status': knowledge.status}
 
 
-def build_context_pack_data(database: Session, payload: RetrievalQueryRequest, *, persist: bool) -> tuple[dict, dict, str]:
+def build_context_pack_data(
+    database: Session,
+    payload: RetrievalQueryRequest,
+    *,
+    persist: bool,
+    request_context: RequestContext | None = None,
+) -> tuple[dict, dict, str]:
+    current_context = _resolve_request_context(request_context)
     request_id = generate_id('ret')
     if payload.session_id:
-        session = _get_scoped_session(database, payload.session_id)
-        if persist and not session:
+        session = _get_scoped_session(database, payload.session_id, request_context=current_context)
+        if not session:
             raise ResourceNotFoundError('session not found')
     if persist:
         database.add(
@@ -660,7 +766,9 @@ def build_context_pack_data(database: Session, payload: RetrievalQueryRequest, *
 
     matching_profiles = [
         profile
-        for profile in database.scalars(select(ConfigProfile).where(ConfigProfile.status == 'active')).all()
+        for profile in database.scalars(
+            apply_config_scope(select(ConfigProfile).where(ConfigProfile.status == 'active'), current_context)
+        ).all()
         if scope_matches(profile.scope_type, profile.scope_id, payload.repo_id, payload.file_paths)
     ]
     ranked_profile_rules, profile_vector_backend_name = rank_config_rules(
@@ -673,7 +781,9 @@ def build_context_pack_data(database: Session, payload: RetrievalQueryRequest, *
 
     candidate_items = [
         item
-        for item in database.scalars(select(KnowledgeItem).where(KnowledgeItem.status == 'active')).all()
+        for item in database.scalars(
+            apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.status == 'active'), current_context)
+        ).all()
         if scope_matches(item.scope_type, item.scope_id, payload.repo_id, payload.file_paths)
     ]
 
@@ -752,7 +862,12 @@ def retrieve_context_pack_data(
     request_context: RequestContext | None = None,
 ) -> tuple[dict, str]:
     current_context = _resolve_request_context(request_context)
-    context_pack, debug_payload, request_id = build_context_pack_data(database, payload, persist=True)
+    context_pack, debug_payload, request_id = build_context_pack_data(
+        database,
+        payload,
+        persist=True,
+        request_context=current_context,
+    )
     append_audit_log(
         database,
         actor_id=current_context.user_id or 'system',

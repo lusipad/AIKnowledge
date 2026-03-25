@@ -4,9 +4,9 @@
 
 ## 当前定位
 
-- 当前版本定位为：`单团队 / 单仓库` 试点版
+- 当前版本定位为：`多租户请求隔离 + 共享仓库规则` 的过渡版
 - 当前目标是：稳定验证采集、抽取、审核、检索、反馈、审计与评估闭环
-- `X-Tenant-Id`、`X-Team-Id`、`X-User-Id` 当前用于请求上下文透传与审计记录，不代表已实现多租户隔离
+- `X-Tenant-Id`、`X-Team-Id`、`X-User-Id` 已用于会话、知识、提取任务、检索日志、审计和评估的请求级作用域隔离
 - 服务启动不再隐式建表；首次运行前需要先执行数据库初始化或 Alembic 迁移
 
 ## 当前已实现
@@ -39,6 +39,7 @@
 - GitHub Actions CI 工作流
 - 数据库健康检查
 - 持续 schema drift 校验
+- 按 `tenant/team` 收紧的知识、检索、提取任务和团队级配置访问控制
 
 ## 目录
 
@@ -181,6 +182,7 @@ python3 -m uvicorn app.main:app --reload
 - `alembic/env.py`
 - `alembic/versions/20260324_0001_initial_schema.py`
 - `alembic/versions/20260325_0002_add_evaluation_run.py`
+- `alembic/versions/20260326_0003_add_team_scope_to_knowledge.py`
 
 执行迁移：
 
@@ -412,8 +414,9 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 - `X-Request-Id` 会写入响应头，并出现在大部分响应体的 `request_id`
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id`、`X-Client-Type` 会进入会话元数据和审计日志
-- 当前试点版已对 `sessions / knowledge / retrieval logs / audit / evaluation` 等核心读取接口按 `tenant/team` 做隔离裁剪
-- 但仍未实现完整的租户级数据模型隔离、角色权限裁剪和所有写路径的强约束
+- 当前版本已对 `sessions / knowledge / retrieval / retrieval logs / extract task / audit / evaluation` 等核心读写路径按 `tenant/team` 做作用域裁剪
+- `PUT /config/profile/{profile_id}` 与 `POST /config/profile/{profile_id}/rollback` 已对 `tenant/team` scope 做归属校验，避免跨租户覆盖团队级配置
+- 共享 `global / repo / path` 配置仍属于平台级资源，租户侧默认只读
 
 ## 配套文件
 
@@ -428,7 +431,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 ## 当前限制
 
-- 当前版本默认服务于 `单团队 / 单仓库` 试点场景；已支持核心读取接口按 `tenant/team` 隔离，但尚未完成完整多租户数据隔离与跨团队权限裁剪
+- 当前版本已完成会话、知识、提取任务、检索日志、审计、评估及团队级配置的请求级 `tenant/team` 隔离；但 `global / repo / path` 共享配置仍未拆成独立租户数据模型
 - `pgvector` 存储层仍是占位后端，尚未把 embedding 持久化到 PostgreSQL 向量索引
 - 权限和敏感信息控制仍是基础骨架，尚未实现按租户 / 团队 / 角色的细粒度授权
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式

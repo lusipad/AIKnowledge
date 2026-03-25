@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.dependencies import get_db
 from app.main import app
-from app.models import ConfigProfile, KnowledgeItem
+from app.models import ConfigProfile, ConversationSession, KnowledgeItem
 from app.services.bootstrap import seed_default_profiles
 
 
@@ -25,6 +25,19 @@ class RetrievalQualityTestCase(unittest.TestCase):
         database = self.SessionTesting()
         try:
             seed_default_profiles(database)
+            database.add(
+                ConversationSession(
+                    session_id='sess_debug_001',
+                    tenant_id=None,
+                    team_id=None,
+                    user_id='tester',
+                    repo_id='demo-repo',
+                    branch_name='feature/retrieval-quality',
+                    task_id='TEST-RETRIEVAL-001',
+                    client_type='test',
+                    status='active',
+                )
+            )
             database.add(
                 ConfigProfile(
                     profile_id='cfg_duplicate_rule',

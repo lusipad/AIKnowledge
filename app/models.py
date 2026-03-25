@@ -80,6 +80,7 @@ class KnowledgeItem(Base):
 
     knowledge_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     scope_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     scope_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     knowledge_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)

@@ -13,6 +13,7 @@ from app.schemas import ExtractRequest, KnowledgeDeprecateRequest, KnowledgeUpda
 from app.services.audit import append_audit_log
 from app.services.isolation import apply_knowledge_scope
 from app.services.use_cases import (
+    AuthorizationError,
     InvalidOperationError,
     ResourceNotFoundError,
     create_extract_task_data,
@@ -37,7 +38,7 @@ def create_extract_task(payload: ExtractRequest, database: Session = Depends(get
 @router.get("/knowledge/extract/{task_id}")
 def get_extract_task(task_id: str, database: Session = Depends(get_db)):
     try:
-        return api_response(get_extract_task_data(task_id, database))
+        return api_response(get_extract_task_data(task_id, database, request_context=get_request_context()))
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -48,6 +49,8 @@ def review_knowledge(payload: ReviewRequest, database: Session = Depends(get_db)
         return api_response(review_knowledge_data(payload, database))
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except InvalidOperationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

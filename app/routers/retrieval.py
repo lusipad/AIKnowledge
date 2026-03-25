@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import ContextPackFeedback, KnowledgeFeedback, RetrievalRequest, RetrievalResult
+from app.request_context import get_request_context
 from app.schemas import RetrievalQueryRequest
 from app.services.isolation import apply_retrieval_request_scope
 from app.services.use_cases import (
@@ -27,7 +28,15 @@ def retrieve_context_pack(payload: RetrievalQueryRequest, database: Session = De
 
 @router.post('/retrieval/debug')
 def debug_retrieval(payload: RetrievalQueryRequest, database: Session = Depends(get_db)):
-    context_pack, debug_payload, _ = build_context_pack_data(database, payload, persist=False)
+    try:
+        context_pack, debug_payload, _ = build_context_pack_data(
+            database,
+            payload,
+            persist=False,
+            request_context=get_request_context(),
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return api_response({'context_pack': context_pack, 'debug': debug_payload})
 
 

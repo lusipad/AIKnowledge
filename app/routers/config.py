@@ -8,7 +8,7 @@ from app.request_context import get_request_context
 from app.schemas import ConfigProfileUpsertRequest, ConfigRollbackRequest
 from app.services.audit import append_audit_log
 from app.services.isolation import apply_config_scope
-from app.services.use_cases import upsert_profile_data
+from app.services.use_cases import AuthorizationError, InvalidOperationError, ResourceNotFoundError, ensure_profile_writable, upsert_profile_data
 from app.utils import api_response
 
 
@@ -86,7 +86,14 @@ def get_profile(profile_id: str, database: Session = Depends(get_db)):
 
 @router.put("/config/profile/{profile_id}")
 def upsert_profile(profile_id: str, payload: ConfigProfileUpsertRequest, database: Session = Depends(get_db)):
-    return api_response(upsert_profile_data(profile_id, payload, database))
+    try:
+        return api_response(upsert_profile_data(profile_id, payload, database))
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except InvalidOperationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/config/profile/{profile_id}/rollback")
@@ -95,6 +102,12 @@ def rollback_profile(profile_id: str, payload: ConfigRollbackRequest, database: 
     profile = database.scalar(apply_config_scope(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id)))
     if not profile:
         raise HTTPException(status_code=404, detail="profile not found")
+    try:
+        ensure_profile_writable(profile, request_context)
+    except AuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except InvalidOperationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     versions = database.scalars(
         select(ConfigProfileVersion).where(ConfigProfileVersion.profile_id == profile_id).order_by(ConfigProfileVersion.version.desc())

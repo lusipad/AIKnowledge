@@ -9,12 +9,14 @@ from app.utils import extract_keywords, keyword_overlap_score, similarity_score,
 
 vector_backend = create_vector_backend()
 
-CONFIG_RULE_LIMITS = {'path': 2, 'repo': 1, 'global': 1}
-CONFIG_RULE_SCORE_FLOORS = {'path': 0.12, 'repo': 0.17, 'global': 0.2}
+CONFIG_RULE_LIMITS = {'path': 2, 'repo': 1, 'team': 1, 'tenant': 1, 'global': 1}
+CONFIG_RULE_SCORE_FLOORS = {'path': 0.12, 'repo': 0.17, 'team': 0.14, 'tenant': 0.15, 'global': 0.2}
 
 
 def scope_matches(scope_type: str, scope_id: str, repo_id: str | None, file_paths: list[str]) -> bool:
     if scope_type == 'global':
+        return True
+    if scope_type in {'tenant', 'team'}:
         return True
     if scope_type == 'repo':
         return repo_id == scope_id
@@ -45,6 +47,10 @@ def _scope_boost(scope_type: str, scope_id: str, repo_id: str | None, file_paths
         return min(0.38, 0.22 + (depth * 0.02))
     if scope_type == 'repo' and repo_id == scope_id:
         return 0.18
+    if scope_type == 'team':
+        return 0.16
+    if scope_type == 'tenant':
+        return 0.12
     if scope_type == 'global':
         return 0.08
     return 0.0

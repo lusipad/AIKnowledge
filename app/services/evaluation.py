@@ -262,6 +262,16 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
     }
     responses: dict[str, dict[str, Any]] = {}
 
+    if request_context.team_id and request_context.tenant_id:
+        profile_scope_type = 'team'
+        profile_scope_id = f'team:{request_context.tenant_id}:{request_context.team_id}'
+    elif request_context.tenant_id:
+        profile_scope_type = 'tenant'
+        profile_scope_id = f'tenant:{request_context.tenant_id}'
+    else:
+        profile_scope_type = 'path'
+        profile_scope_id = scenario['file_path'].rsplit('/', 1)[0]
+
     def as_response(data: dict[str, Any], *, request_id: str | None = None) -> dict[str, Any]:
         return api_response(data, request_id=request_id or request_context.request_id)
 
@@ -344,8 +354,8 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             upsert_profile_data(
                 profile_id,
                 ConfigProfileUpsertRequest(
-                    scope_type='path',
-                    scope_id=scenario['file_path'].rsplit('/', 1)[0],
+                    scope_type=profile_scope_type,
+                    scope_id=profile_scope_id,
                     profile_type='coding_rule',
                     content={'instructions': scenario['profile_instructions']},
                     version=1,

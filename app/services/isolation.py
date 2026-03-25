@@ -27,9 +27,8 @@ def apply_session_scope(statement, request_context: RequestContext | None = None
 
 def apply_knowledge_scope(statement, request_context: RequestContext | None = None):
     current_context = resolve_request_scope(request_context)
-    if not current_context.tenant_id:
-        return statement
-    return statement.where(KnowledgeItem.tenant_id == current_context.tenant_id)
+    clause = _scope_clause_for_columns(KnowledgeItem.tenant_id, KnowledgeItem.team_id, current_context)
+    return statement.where(clause) if clause is not None else statement
 
 
 def apply_retrieval_request_scope(statement, request_context: RequestContext | None = None):

@@ -115,6 +115,7 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         items = extract_response.json()['data']['items']
         self.assertEqual(len(items), 2)
         knowledge_id = items[0]['knowledge_id']
+        extract_task_id = items[0]['task_id']
         self.assertFalse(items[0]['deduplicated'])
 
         extract_deduplicated_response = self.client.post(
@@ -233,6 +234,76 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         self.assertEqual(audit_logs_response.json()['request_id'], 'req_http_e2e_001')
         self.assertEqual(audit_logs_response.json()['data'][0]['detail']['tenant_id'], 'tenant-demo')
 
+        team_profile_id = 'cfg_team_demo'
+        team_profile_response = self.client.put(
+            f'/api/v1/config/profile/{team_profile_id}',
+            json={
+                'scope_type': 'team',
+                'scope_id': 'team:tenant-demo:team-demo',
+                'profile_type': 'prompt',
+                'content': {'instructions': ['团队级数据库变更必须走回滚预案。']},
+                'version': 1,
+                'status': 'active',
+            },
+            headers=request_headers,
+        )
+        self.assertEqual(team_profile_response.status_code, 200)
+
+        same_tenant_other_team_headers = {
+            'X-Request-Id': 'req_http_e2e_003',
+            'X-Tenant-Id': 'tenant-demo',
+            'X-Team-Id': 'team-other',
+            'X-User-Id': 'user-team-other',
+            'X-Client-Type': 'agent',
+        }
+        same_tenant_other_team_knowledge = self.client.get(
+            f'/api/v1/knowledge/{knowledge_id}',
+            headers=same_tenant_other_team_headers,
+        )
+        self.assertEqual(same_tenant_other_team_knowledge.status_code, 404)
+
+        same_tenant_other_team_extract = self.client.get(
+            f'/api/v1/knowledge/extract/{extract_task_id}',
+            headers=same_tenant_other_team_headers,
+        )
+        self.assertEqual(same_tenant_other_team_extract.status_code, 404)
+
+        same_tenant_other_team_retrieval = self.client.post(
+            '/api/v1/retrieval/query',
+            json={
+                'session_id': session_id,
+                'query': '为订单风控增加渠道黑名单校验',
+                'query_type': 'feature_impl',
+                'repo_id': 'demo-repo',
+                'branch_name': 'feature/http-e2e',
+                'file_paths': ['src/order/risk/check.ts'],
+                'token_budget': 2000,
+            },
+            headers=same_tenant_other_team_headers,
+        )
+        self.assertEqual(same_tenant_other_team_retrieval.status_code, 404)
+
+        same_tenant_other_team_profile = self.client.get(
+            f'/api/v1/config/profile/{team_profile_id}',
+            headers=same_tenant_other_team_headers,
+        )
+        self.assertEqual(same_tenant_other_team_profile.status_code, 404)
+
+        same_tenant_other_team_debug = self.client.post(
+            '/api/v1/retrieval/debug',
+            json={
+                'session_id': session_id,
+                'query': '为订单风控增加渠道黑名单校验',
+                'query_type': 'feature_impl',
+                'repo_id': 'demo-repo',
+                'branch_name': 'feature/http-e2e',
+                'file_paths': ['src/order/risk/check.ts'],
+                'token_budget': 2000,
+            },
+            headers=same_tenant_other_team_headers,
+        )
+        self.assertEqual(same_tenant_other_team_debug.status_code, 404)
+
         foreign_headers = {
             'X-Request-Id': 'req_http_e2e_002',
             'X-Tenant-Id': 'tenant-other',
@@ -254,6 +325,12 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         )
         self.assertEqual(foreign_retrieval_log.status_code, 404)
 
+        foreign_extract_task = self.client.get(
+            f'/api/v1/knowledge/extract/{extract_task_id}',
+            headers=foreign_headers,
+        )
+        self.assertEqual(foreign_extract_task.status_code, 404)
+
         foreign_knowledge_feedback = self.client.post(
             '/api/v1/feedback/knowledge',
             json={
@@ -271,6 +348,12 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         foreign_audit_logs = self.client.get('/api/v1/audit/logs', headers=foreign_headers)
         self.assertEqual(foreign_audit_logs.status_code, 200)
         self.assertEqual(len(foreign_audit_logs.json()['data']), 0)
+
+        foreign_profile = self.client.get(
+            f'/api/v1/config/profile/{team_profile_id}',
+            headers=foreign_headers,
+        )
+        self.assertEqual(foreign_profile.status_code, 404)
 
 
 if __name__ == '__main__':
