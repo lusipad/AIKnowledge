@@ -186,6 +186,25 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         )
         self.assertEqual(knowledge_feedback_response.status_code, 200)
 
+        invalidation_response = self.client.post(
+            '/api/v1/context/events',
+            json={
+                'session_id': session_id,
+                'events': [
+                    {
+                        'event_type': 'deploy',
+                        'summary': '订单风控统一规则引擎已迁移到新服务，旧接入方式下线并被替换。',
+                        'file_paths': ['src/order/risk/check.ts'],
+                        'symbol_names': [],
+                    }
+                ],
+            },
+            headers=request_headers,
+        )
+        self.assertEqual(invalidation_response.status_code, 200)
+        self.assertEqual(invalidation_response.json()['data']['freshness_updates'][0]['knowledge_id'], knowledge_id)
+        self.assertEqual(invalidation_response.json()['data']['freshness_updates'][0]['status'], 'deprecated')
+
         retrieval_logs_response = self.client.get(
             '/api/v1/retrieval/logs',
             params={'session_id': session_id, 'repo_id': 'demo-repo', 'query_type': 'feature_impl', 'limit': 5},

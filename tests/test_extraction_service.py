@@ -80,6 +80,7 @@ class ExtractionServiceTestCase(unittest.TestCase):
         self.assertEqual(draft.knowledge_type, 'rule')
         self.assertEqual(draft.content['scope_type'], 'path')
         self.assertIn('demo-repo', draft.content['tags'])
+        self.assertIn('规则引擎迁移', draft.content['invalidation_signals'])
 
     def test_extract_knowledge_draft_prefers_llm_when_available(self):
         session, signal, events = _build_fixtures()

@@ -79,6 +79,17 @@ def _heuristic_scope(session: ConversationSession | None, file_paths: list[str])
     return 'global', 'global'
 
 
+def _heuristic_invalidation_signals(joined_summary: str) -> list[str]:
+    signals: list[str] = []
+    if '规则引擎' in joined_summary:
+        signals.extend(['规则引擎迁移', '规则引擎替换'])
+    if '黑名单' in joined_summary:
+        signals.append('黑名单规则迁移')
+    if '风控' in joined_summary:
+        signals.append('风控规则重构')
+    return list(dict.fromkeys(signals))[:5]
+
+
 def build_heuristic_draft(
     signal: KnowledgeSignal,
     session: ConversationSession | None,
@@ -103,7 +114,7 @@ def build_heuristic_draft(
             'source_session_id': signal.session_id,
             'file_paths': file_paths,
             'applicability': {'repo_id': session.repo_id if session else None, 'file_paths': file_paths},
-            'invalidation_signals': [],
+            'invalidation_signals': _heuristic_invalidation_signals(joined_summary),
         },
         quality_score=_clamp_score(signal.confidence, 0.75),
         confidence_score=_clamp_score(signal.confidence, 0.75),

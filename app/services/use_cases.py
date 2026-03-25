@@ -32,6 +32,7 @@ from app.schemas import (
 )
 from app.services.audit import append_audit_log
 from app.services.extraction import extract_knowledge_draft
+from app.services.freshness import apply_knowledge_freshness_updates
 from app.services.retrieval import (
     build_context_summary,
     dedupe_ranked_entries,
@@ -120,6 +121,7 @@ def append_context_events_data(
 
     accepted_count = 0
     created_signal_ids: list[str] = []
+    freshness_updates: list[dict] = []
     for item in payload.events:
         event = SessionEvent(
             session_id=payload.session_id,
@@ -141,6 +143,26 @@ def append_context_events_data(
             database.add(signal)
             created_signal_ids.append(signal.signal_id)
 
+        updates = apply_knowledge_freshness_updates(
+            database,
+            session=session,
+            event=event,
+            actor_id=current_context.user_id or session.user_id or 'system',
+        )
+        freshness_updates.extend(
+            [
+                {
+                    'knowledge_id': update.knowledge_id,
+                    'action': update.action,
+                    'status': update.status,
+                    'freshness_score': update.freshness_score,
+                    'matched_signals': update.matched_signals,
+                    'overlap_score': update.overlap_score,
+                }
+                for update in updates
+            ]
+        )
+
     append_audit_log(
         database,
         actor_id=current_context.user_id or session.user_id or 'system',
@@ -149,7 +171,11 @@ def append_context_events_data(
         resource_id=payload.session_id,
         scope_type='repo',
         scope_id=session.repo_id,
-        detail={'accepted_count': accepted_count, 'created_signal_ids': created_signal_ids},
+        detail={
+            'accepted_count': accepted_count,
+            'created_signal_ids': created_signal_ids,
+            'freshness_updates': freshness_updates,
+        },
     )
     database.commit()
     return {
@@ -157,6 +183,7 @@ def append_context_events_data(
         'accepted_count': accepted_count,
         'rejected_count': 0,
         'created_signal_ids': created_signal_ids,
+        'freshness_updates': freshness_updates,
     }
 
 

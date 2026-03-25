@@ -113,6 +113,7 @@ API 设计目标：
 
 - `accepted_count`
 - `rejected_count`
+- `freshness_updates`
 
 ## 3.3 查询会话详情
 

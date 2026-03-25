@@ -112,6 +112,23 @@ class MvpFlowTestCase(unittest.TestCase):
         )
         self.assertEqual(review_response['data']['status'], 'active')
 
+        invalidation_events = append_context_events(
+            ContextEventsRequest(
+                session_id=session_id,
+                events=[
+                    {
+                        'event_type': 'deploy',
+                        'summary': '订单风控统一规则引擎已迁移到新服务，旧接入方式下线并被替换。',
+                        'file_paths': ['src/order/risk/check.ts'],
+                        'symbol_names': [],
+                    }
+                ],
+            ),
+            self.database,
+        )
+        self.assertEqual(invalidation_events['data']['freshness_updates'][0]['knowledge_id'], knowledge_id)
+        self.assertEqual(invalidation_events['data']['freshness_updates'][0]['status'], 'deprecated')
+
         update_response = update_knowledge(
             knowledge_id,
             KnowledgeUpdateRequest(title='规则：订单风控统一规则引擎接入', status='active'),
