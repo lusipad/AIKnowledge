@@ -10,15 +10,8 @@ runtime_dir = ROOT_DIR / 'runtime'
 runtime_dir.mkdir(exist_ok=True)
 os.environ.setdefault('AICODING_DB_URL', 'sqlite:///./runtime/aicoding_mvp.db')
 
-from app.database import Base, SessionLocal, engine
-from app.services.bootstrap import seed_default_profiles
+from app.services.database_admin import initialize_database
 
 
-Base.metadata.create_all(bind=engine)
-database = SessionLocal()
-try:
-    seed_default_profiles(database)
-finally:
-    database.close()
-
-print('database initialized')
+initialize_database()
+print('database migrated and initialized')

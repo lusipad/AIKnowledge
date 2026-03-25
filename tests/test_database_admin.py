@@ -1,0 +1,57 @@
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
+from app.database import Base, normalize_database_url
+from app.models import ConfigProfile
+from app.services.database_admin import database_schema_status, initialize_database
+
+
+class DatabaseAdminTestCase(unittest.TestCase):
+    def test_database_schema_status_reports_missing_tables(self):
+        engine = create_engine('sqlite:///:memory:', connect_args={'check_same_thread': False})
+        try:
+            schema_ready, missing_tables = database_schema_status(engine)
+        finally:
+            engine.dispose()
+
+        self.assertFalse(schema_ready)
+        self.assertIn('conversation_session', missing_tables)
+
+    def test_database_schema_status_reports_ready_after_schema_creation(self):
+        engine = create_engine('sqlite:///:memory:', connect_args={'check_same_thread': False})
+        try:
+            Base.metadata.create_all(bind=engine)
+            schema_ready, missing_tables = database_schema_status(engine)
+        finally:
+            Base.metadata.drop_all(bind=engine)
+            engine.dispose()
+
+        self.assertTrue(schema_ready)
+        self.assertEqual(missing_tables, [])
+
+    def test_initialize_database_runs_migrations_and_seeds_profiles(self):
+        temp_dir = Path(tempfile.mkdtemp(prefix='aiknowledge-db-admin-'))
+        database_url = normalize_database_url(f"sqlite:///{(temp_dir / 'init.db').as_posix()}")
+        try:
+            initialize_database(database_url)
+
+            engine = create_engine(database_url, connect_args={'check_same_thread': False})
+            session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+            database = session_factory()
+            try:
+                schema_ready, missing_tables = database_schema_status(engine)
+                profile_count = len(database.scalars(select(ConfigProfile)).all())
+            finally:
+                database.close()
+                engine.dispose()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        self.assertTrue(schema_ready)
+        self.assertEqual(missing_tables, [])
+        self.assertGreaterEqual(profile_count, 1)

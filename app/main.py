@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
 from app.request_context import RequestContextMiddleware
 from app.routers.audit import router as audit_router
 from app.routers.config import router as config_router
@@ -18,6 +18,7 @@ from app.routers.sessions import router as sessions_router
 from app.routers.ui import router as ui_router
 from app.security import ApiKeyMiddleware
 from app.services.bootstrap import seed_default_profiles
+from app.services.database_admin import ensure_database_ready
 from app.services.health import database_healthcheck
 from app.settings import load_settings
 
@@ -28,7 +29,7 @@ STATIC_ROOT = Path(__file__).resolve().parent / 'static'
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    ensure_database_ready()
     database = SessionLocal()
     try:
         seed_default_profiles(database)
