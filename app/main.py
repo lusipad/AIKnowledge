@@ -8,6 +8,7 @@ from app.routers.config import router as config_router
 from app.routers.context import router as context_router
 from app.routers.feedback import router as feedback_router
 from app.routers.knowledge import router as knowledge_router
+from app.routers.llm import router as llm_router
 from app.routers.retrieval import router as retrieval_router
 from app.routers.sessions import router as sessions_router
 from app.security import ApiKeyMiddleware
@@ -42,6 +43,7 @@ if settings.api_key_enabled:
 app.include_router(sessions_router)
 app.include_router(context_router)
 app.include_router(knowledge_router)
+app.include_router(llm_router)
 app.include_router(retrieval_router)
 app.include_router(config_router)
 app.include_router(feedback_router)
@@ -58,6 +60,7 @@ def root():
         'env': settings.env,
         'auth_enabled': settings.api_key_enabled,
         'vector_backend': settings.vector_backend,
+        'llm_configured': settings.llm_configured,
     }
 
 
@@ -69,5 +72,10 @@ def healthz():
         'database': {'ok': db_ok, 'detail': db_detail},
         'vector_backend': settings.vector_backend,
         'auth_enabled': settings.api_key_enabled,
+        'llm': {
+            'configured': settings.llm_configured,
+            'model': settings.llm_model,
+            'base_url': settings.llm_base_url,
+        },
         'version': settings.app_version,
     }

@@ -7,6 +7,12 @@ from dataclasses import dataclass
 ALLOWED_VECTOR_BACKENDS = {'simple', 'keyword', 'simple-keyword', 'pgvector', 'postgres'}
 
 
+def _normalize_llm_chat_path(path: str | None) -> str:
+    if not path:
+        return '/v1/chat/completions'
+    return path if path.startswith('/') else f'/{path}'
+
+
 @dataclass(frozen=True)
 class AppSettings:
     app_name: str
@@ -15,10 +21,19 @@ class AppSettings:
     vector_backend: str
     api_key: str | None
     env: str
+    llm_base_url: str | None
+    llm_api_key: str | None
+    llm_model: str | None
+    llm_chat_path: str
+    llm_timeout_sec: int
 
     @property
     def api_key_enabled(self) -> bool:
         return bool(self.api_key)
+
+    @property
+    def llm_configured(self) -> bool:
+        return bool(self.llm_base_url and self.llm_api_key and self.llm_model)
 
 
 
@@ -29,9 +44,14 @@ def load_settings() -> AppSettings:
 
     return AppSettings(
         app_name='AI Coding Knowledge & Memory MVP',
-        app_version='0.3.0',
+        app_version='0.4.0',
         db_url=os.getenv('AICODING_DB_URL', 'sqlite:///./aicoding_mvp.db'),
         vector_backend=vector_backend,
         api_key=os.getenv('AICODING_API_KEY') or None,
         env=os.getenv('AICODING_ENV', 'dev'),
+        llm_base_url=(os.getenv('AICODING_LLM_BASE_URL') or '').rstrip('/') or None,
+        llm_api_key=os.getenv('AICODING_LLM_API_KEY') or None,
+        llm_model=os.getenv('AICODING_LLM_MODEL') or None,
+        llm_chat_path=_normalize_llm_chat_path(os.getenv('AICODING_LLM_CHAT_PATH')),
+        llm_timeout_sec=max(1, int(os.getenv('AICODING_LLM_TIMEOUT_SEC', '30'))),
     )

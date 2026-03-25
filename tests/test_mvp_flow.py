@@ -45,6 +45,7 @@ class MvpFlowTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.database.close()
+        engine.dispose()
 
     def test_end_to_end_flow(self):
         session_response = create_session(
@@ -90,6 +91,8 @@ class MvpFlowTestCase(unittest.TestCase):
         self.assertEqual(len(extract_response['data']['items']), 2)
         task_id = extract_response['data']['items'][0]['task_id']
         knowledge_id = extract_response['data']['items'][0]['knowledge_id']
+        deduplicated_extract = create_extract_task(ExtractRequest(signal_ids=signal_ids, force=False), self.database)
+        self.assertTrue(deduplicated_extract['data']['items'][0]['deduplicated'])
 
         extract_task = get_extract_task(task_id, self.database)
         self.assertEqual(extract_task['data']['status'], 'success')
@@ -198,8 +201,19 @@ class MvpFlowTestCase(unittest.TestCase):
         )
         self.assertEqual(deprecated['data']['status'], 'deprecated')
 
-        knowledge_list = list_knowledge(scope_type='repo', scope_id='demo-repo', knowledge_type=None, status=None, database=self.database)
-        self.assertGreaterEqual(len(knowledge_list['data']), 2)
+        knowledge_list = list_knowledge(
+            scope_type='path',
+            scope_id='src/order/risk',
+            knowledge_type=None,
+            memory_type=None,
+            status=None,
+            keyword='demo-repo',
+            page=1,
+            page_size=20,
+            database=self.database,
+        )
+        self.assertGreaterEqual(len(knowledge_list['data']['items']), 1)
+        self.assertGreaterEqual(knowledge_list['data']['total'], 1)
 
         retrieval_logs = list_retrieval_logs(self.database)
         self.assertGreaterEqual(len(retrieval_logs['data']), 1)

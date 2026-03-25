@@ -4,3 +4,4 @@ sqlalchemy
 pydantic
 alembic
 psycopg[binary]
+httpx

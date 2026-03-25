@@ -5,3 +5,6 @@ __pycache__/
 runtime/
 .pytest_cache/
 .venv/
+.env
+.env.*
+!.env.example

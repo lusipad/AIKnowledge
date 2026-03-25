@@ -10,5 +10,11 @@ test:
 demo:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/demo_flow.py
 
+client-demo:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/http_client.py demo
+
+verify-llm:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/verify_llm.py
+
 migrate:
 	PYTHONDONTWRITEBYTECODE=1 alembic upgrade head

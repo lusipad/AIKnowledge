@@ -16,17 +16,12 @@ from app.models import (
 )
 from app.schemas import ExtractRequest, KnowledgeDeprecateRequest, KnowledgeUpdateRequest, ReviewRequest
 from app.services.audit import append_audit_log
+from app.services.extraction import extract_knowledge_draft
+from app.settings import load_settings
 from app.utils import api_response, generate_id
 
 
 router = APIRouter(prefix="/api/v1", tags=["knowledge"])
-
-
-MEMORY_MAPPING = {
-    "rule": "semantic",
-    "case": "episodic",
-    "procedure": "procedural",
-}
 
 
 def _build_knowledge_from_signal(database: Session, signal: KnowledgeSignal) -> tuple[KnowledgeCandidate, ExtractTask, KnowledgeItem]:
@@ -38,40 +33,36 @@ def _build_knowledge_from_signal(database: Session, signal: KnowledgeSignal) -> 
         .limit(10)
     ).all()
     joined_summary = "\n".join(event.summary for event in reversed(events)) or signal.source_refs.get("summary", "")
+    extraction = extract_knowledge_draft(signal, session, events, settings=load_settings())
     candidate = KnowledgeCandidate(
         candidate_id=generate_id("cand"),
         signal_id=signal.signal_id,
-        candidate_type=signal.signal_type,
+        candidate_type=extraction.knowledge_type,
         summary=joined_summary[:1500],
-        scope_hint={"scope_type": "repo", "scope_id": session.repo_id if session else "global"},
-        quality_score=float(signal.confidence),
-        extract_prompt_version="v1",
+        scope_hint={
+            "scope_type": extraction.content.get("scope_type", "repo"),
+            "scope_id": extraction.content.get("scope_id", session.repo_id if session else "global"),
+        },
+        quality_score=extraction.quality_score,
+        extract_prompt_version=extraction.prompt_version,
         status="reviewing",
     )
     database.add(candidate)
     database.flush()
 
-    title_prefix = {"rule": "规则", "case": "案例", "procedure": "流程"}.get(signal.signal_type, "知识")
-    title_body = signal.source_refs.get("summary") or joined_summary.splitlines()[0] or "自动提取内容"
     knowledge = KnowledgeItem(
         knowledge_id=generate_id("kn"),
-        scope_type="repo" if session else "global",
-        scope_id=session.repo_id if session else "global",
-        knowledge_type=signal.signal_type,
-        memory_type=MEMORY_MAPPING.get(signal.signal_type, "semantic"),
-        title=f"{title_prefix}：{title_body[:80]}",
-        content={
-            "background": joined_summary[:500],
-            "conclusion": signal.source_refs.get("summary", ""),
-            "summary": joined_summary[:1200],
-            "tags": [signal.signal_type, session.repo_id if session else "global"],
-            "source_session_id": signal.session_id,
-        },
+        scope_type=extraction.content.get("scope_type", "repo" if session else "global"),
+        scope_id=extraction.content.get("scope_id", session.repo_id if session else "global"),
+        knowledge_type=extraction.knowledge_type,
+        memory_type=extraction.memory_type,
+        title=extraction.title,
+        content=extraction.content,
         status="draft",
-        quality_score=float(signal.confidence),
-        confidence_score=float(signal.confidence),
-        freshness_score=1.0,
-        created_by="heuristic-extractor",
+        quality_score=extraction.quality_score,
+        confidence_score=extraction.confidence_score,
+        freshness_score=extraction.freshness_score,
+        created_by=extraction.created_by,
     )
     database.add(knowledge)
     database.flush()
@@ -90,14 +81,33 @@ def _build_knowledge_from_signal(database: Session, signal: KnowledgeSignal) -> 
         task_id=generate_id("ext"),
         candidate_id=candidate.candidate_id,
         status="success",
-        model_name="heuristic-extractor",
-        prompt_version="v1",
+        model_name=extraction.model_name,
+        prompt_version=extraction.prompt_version,
         result_ref=knowledge.knowledge_id,
     )
     database.add(task)
 
     signal.status = "processed"
     return candidate, task, knowledge
+
+
+def _find_existing_extract_result(database: Session, signal_id: str) -> tuple[KnowledgeCandidate, ExtractTask] | None:
+    candidate = database.scalar(
+        select(KnowledgeCandidate)
+        .where(KnowledgeCandidate.signal_id == signal_id)
+        .order_by(KnowledgeCandidate.created_at.desc())
+    )
+    if not candidate:
+        return None
+
+    task = database.scalar(
+        select(ExtractTask)
+        .where(ExtractTask.candidate_id == candidate.candidate_id)
+        .order_by(ExtractTask.created_at.desc())
+    )
+    if not task:
+        return None
+    return candidate, task
 
 
 @router.post("/knowledge/extract")
@@ -108,8 +118,21 @@ def create_extract_task(payload: ExtractRequest, database: Session = Depends(get
 
     created_items: list[dict] = []
     for signal in signals:
-        if signal.status == "processed" and not payload.force:
+        existing = _find_existing_extract_result(database, signal.signal_id)
+        if existing and not payload.force:
+            candidate, task = existing
+            created_items.append(
+                {
+                    "signal_id": signal.signal_id,
+                    "candidate_id": candidate.candidate_id,
+                    "task_id": task.task_id,
+                    "knowledge_id": task.result_ref,
+                    "status": task.status,
+                    "deduplicated": True,
+                }
+            )
             continue
+
         candidate, task, knowledge = _build_knowledge_from_signal(database, signal)
         append_audit_log(
             database,
@@ -128,6 +151,7 @@ def create_extract_task(payload: ExtractRequest, database: Session = Depends(get
                 "task_id": task.task_id,
                 "knowledge_id": knowledge.knowledge_id,
                 "status": task.status,
+                "deduplicated": False,
             }
         )
 
@@ -193,7 +217,11 @@ def list_knowledge(
     scope_type: str | None = None,
     scope_id: str | None = None,
     knowledge_type: str | None = None,
+    memory_type: str | None = None,
     status: str | None = None,
+    keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
     database: Session = Depends(get_db),
 ):
     statement = select(KnowledgeItem).order_by(KnowledgeItem.updated_at.desc())
@@ -203,25 +231,44 @@ def list_knowledge(
         statement = statement.where(KnowledgeItem.scope_id == scope_id)
     if knowledge_type:
         statement = statement.where(KnowledgeItem.knowledge_type == knowledge_type)
+    if memory_type:
+        statement = statement.where(KnowledgeItem.memory_type == memory_type)
     if status:
         statement = statement.where(KnowledgeItem.status == status)
 
     knowledge_items = database.scalars(statement).all()
-    return api_response(
-        [
-            {
-                "knowledge_id": item.knowledge_id,
-                "title": item.title,
-                "knowledge_type": item.knowledge_type,
-                "memory_type": item.memory_type,
-                "scope_type": item.scope_type,
-                "scope_id": item.scope_id,
-                "status": item.status,
-                "quality_score": float(item.quality_score),
-                "updated_at": item.updated_at.isoformat(),
-            }
+    if keyword:
+        lowered_keyword = keyword.lower()
+        knowledge_items = [
+            item
             for item in knowledge_items
+            if lowered_keyword in item.title.lower() or lowered_keyword in str(item.content).lower()
         ]
+
+    normalized_page = max(1, page)
+    normalized_page_size = max(1, min(page_size, 100))
+    start_index = (normalized_page - 1) * normalized_page_size
+    paginated_items = knowledge_items[start_index : start_index + normalized_page_size]
+    return api_response(
+        {
+            "items": [
+                {
+                    "knowledge_id": item.knowledge_id,
+                    "title": item.title,
+                    "knowledge_type": item.knowledge_type,
+                    "memory_type": item.memory_type,
+                    "scope_type": item.scope_type,
+                    "scope_id": item.scope_id,
+                    "status": item.status,
+                    "quality_score": float(item.quality_score),
+                    "updated_at": item.updated_at.isoformat(),
+                }
+                for item in paginated_items
+            ],
+            "page": normalized_page,
+            "page_size": normalized_page_size,
+            "total": len(knowledge_items),
+        }
     )
 
 

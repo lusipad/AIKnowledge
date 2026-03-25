@@ -94,3 +94,8 @@ class ConfigProfileUpsertRequest(BaseModel):
 class ConfigRollbackRequest(BaseModel):
     target_version: int | None = None
     actor_id: str = "system"
+
+
+class LlmVerifyRequest(BaseModel):
+    prompt: str = "Reply with ok only."
+    max_tokens: int = 32
