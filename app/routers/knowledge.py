@@ -13,6 +13,7 @@ from app.security import require_min_role
 from app.schemas import ExtractRequest, KnowledgeDeprecateRequest, KnowledgeUpdateRequest, ReviewRequest
 from app.services.audit import append_audit_log
 from app.services.isolation import apply_knowledge_scope
+from app.services.resource_acl import can_edit_resource, can_view_resource, normalize_acl
 from app.services.use_cases import (
     AuthorizationError,
     InvalidOperationError,
@@ -82,6 +83,7 @@ def list_knowledge(
     database: Session = Depends(get_db),
     _: str = Depends(require_min_role('viewer')),
 ):
+    request_context = get_request_context()
     statement = apply_knowledge_scope(select(KnowledgeItem).order_by(KnowledgeItem.updated_at.desc()))
     if scope_type:
         statement = statement.where(KnowledgeItem.scope_type == scope_type)
@@ -94,7 +96,9 @@ def list_knowledge(
     if status:
         statement = statement.where(KnowledgeItem.status == status)
 
-    knowledge_items = database.scalars(statement).all()
+    knowledge_items = [
+        item for item in database.scalars(statement).all() if can_view_resource(item.acl, request_context)
+    ]
     if keyword:
         lowered_keyword = keyword.lower()
         knowledge_items = [
@@ -117,6 +121,7 @@ def list_knowledge(
                     "memory_type": item.memory_type,
                     "scope_type": item.scope_type,
                     "scope_id": item.scope_id,
+                    "acl": item.acl,
                     "status": item.status,
                     "quality_score": float(item.quality_score),
                     "updated_at": item.updated_at.isoformat(),
@@ -153,6 +158,8 @@ def update_knowledge(
     knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
+    if not can_edit_resource(knowledge.acl, request_context):
+        raise HTTPException(status_code=403, detail="knowledge is not writable for current user")
 
     updated = False
     if payload.title is not None:
@@ -160,6 +167,9 @@ def update_knowledge(
         updated = True
     if payload.content is not None:
         knowledge.content = payload.content
+        updated = True
+    if payload.acl is not None:
+        knowledge.acl = normalize_acl(payload.acl.model_dump())
         updated = True
     if payload.status is not None:
         knowledge.status = payload.status
@@ -187,6 +197,7 @@ def update_knowledge(
             "knowledge_id": knowledge.knowledge_id,
             "status": knowledge.status,
             "version": knowledge.version,
+            "acl": knowledge.acl,
         }
     )
 
@@ -202,6 +213,8 @@ def deprecate_knowledge(
     knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")
+    if not can_edit_resource(knowledge.acl, request_context):
+        raise HTTPException(status_code=403, detail="knowledge is not writable for current user")
 
     knowledge.status = "deprecated"
     knowledge.effective_to = utc_now()
@@ -233,8 +246,9 @@ def list_knowledge_reviews(
     database: Session = Depends(get_db),
     _: str = Depends(require_min_role('viewer')),
 ):
+    request_context = get_request_context()
     knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
-    if not knowledge:
+    if not knowledge or not can_view_resource(knowledge.acl, request_context):
         raise HTTPException(status_code=404, detail="knowledge not found")
 
     reviews = database.scalars(

@@ -9,6 +9,7 @@ from app.security import require_min_role
 from app.schemas import ConfigProfileUpsertRequest, ConfigRollbackRequest
 from app.services.audit import append_audit_log
 from app.services.isolation import apply_config_scope
+from app.services.resource_acl import can_view_resource
 from app.services.use_cases import AuthorizationError, InvalidOperationError, ResourceNotFoundError, ensure_profile_writable, upsert_profile_data
 from app.services.vector_store import sync_config_vector_index
 from app.utils import api_response
@@ -21,8 +22,11 @@ def _record_profile_version(database: Session, profile: ConfigProfile) -> None:
     database.add(
         ConfigProfileVersion(
             profile_id=profile.profile_id,
+            tenant_id=profile.tenant_id,
+            team_id=profile.team_id,
             version=profile.version,
             content=profile.content,
+            acl=profile.acl,
             status=profile.status,
         )
     )
@@ -36,6 +40,7 @@ def get_profiles(
     database: Session = Depends(get_db),
     _: str = Depends(require_min_role('viewer')),
 ):
+    request_context = get_request_context()
     statement = apply_config_scope(select(ConfigProfile).order_by(ConfigProfile.updated_at.desc()))
     if scope_type:
         statement = statement.where(ConfigProfile.scope_type == scope_type)
@@ -44,15 +49,20 @@ def get_profiles(
     if profile_type:
         statement = statement.where(ConfigProfile.profile_type == profile_type)
 
-    profiles = database.scalars(statement).all()
+    profiles = [
+        profile for profile in database.scalars(statement).all() if can_view_resource(profile.acl, request_context)
+    ]
     return api_response(
         [
             {
                 "profile_id": profile.profile_id,
+                "tenant_id": profile.tenant_id,
+                "team_id": profile.team_id,
                 "scope_type": profile.scope_type,
                 "scope_id": profile.scope_id,
                 "profile_type": profile.profile_type,
                 "content": profile.content,
+                "acl": profile.acl,
                 "version": profile.version,
                 "status": profile.status,
             }
@@ -67,8 +77,9 @@ def get_profile(
     database: Session = Depends(get_db),
     _: str = Depends(require_min_role('viewer')),
 ):
+    request_context = get_request_context()
     profile = database.scalar(apply_config_scope(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id)))
-    if not profile:
+    if not profile or not can_view_resource(profile.acl, request_context):
         raise HTTPException(status_code=404, detail="profile not found")
 
     versions = database.scalars(
@@ -77,10 +88,13 @@ def get_profile(
     return api_response(
         {
             "profile_id": profile.profile_id,
+            "tenant_id": profile.tenant_id,
+            "team_id": profile.team_id,
             "scope_type": profile.scope_type,
             "scope_id": profile.scope_id,
             "profile_type": profile.profile_type,
             "content": profile.content,
+            "acl": profile.acl,
             "version": profile.version,
             "status": profile.status,
             "history": [
@@ -148,6 +162,7 @@ def rollback_profile(
         raise HTTPException(status_code=404, detail="target version not found")
 
     profile.content = target_version.content
+    profile.acl = target_version.acl
     profile.status = target_version.status
     profile.version += 1
     _record_profile_version(database, profile)
@@ -166,6 +181,8 @@ def rollback_profile(
     return api_response(
         {
             "profile_id": profile.profile_id,
+            "tenant_id": profile.tenant_id,
+            "team_id": profile.team_id,
             "version": profile.version,
             "restored_from": target_version.version,
             "status": profile.status,

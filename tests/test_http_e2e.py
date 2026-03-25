@@ -242,12 +242,106 @@ class HttpE2EFlowTestCase(unittest.TestCase):
                 'scope_id': 'team:tenant-demo:team-demo',
                 'profile_type': 'prompt',
                 'content': {'instructions': ['团队级数据库变更必须走回滚预案。']},
+                'acl': {
+                    'owners': ['user-demo'],
+                    'editors': [],
+                    'reviewers': [],
+                    'viewers': ['user-demo'],
+                },
                 'version': 1,
                 'status': 'active',
             },
             headers=request_headers,
         )
         self.assertEqual(team_profile_response.status_code, 200)
+        self.assertEqual(team_profile_response.json()['data']['tenant_id'], 'tenant-demo')
+        self.assertEqual(team_profile_response.json()['data']['team_id'], 'team-demo')
+
+        team_repo_profile_id = 'cfg_repo_team_demo'
+        team_repo_profile_response = self.client.put(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            json={
+                'scope_type': 'repo',
+                'scope_id': 'demo-repo',
+                'profile_type': 'prompt',
+                'content': {'instructions': ['团队私有 repo 规则：支付链路变更必须补充灰度开关。']},
+                'version': 1,
+                'status': 'active',
+            },
+            headers=request_headers,
+        )
+        self.assertEqual(team_repo_profile_response.status_code, 200)
+        self.assertEqual(team_repo_profile_response.json()['data']['tenant_id'], 'tenant-demo')
+        self.assertEqual(team_repo_profile_response.json()['data']['team_id'], 'team-demo')
+
+        tenant_admin_headers = {
+            'X-Request-Id': 'req_http_e2e_005',
+            'X-Tenant-Id': 'tenant-demo',
+            'X-User-Id': 'tenant-admin',
+            'X-User-Role': 'admin',
+            'X-Client-Type': 'agent',
+        }
+        tenant_repo_profile_id = 'cfg_repo_tenant_demo'
+        tenant_repo_profile_response = self.client.put(
+            f'/api/v1/config/profile/{tenant_repo_profile_id}',
+            json={
+                'scope_type': 'repo',
+                'scope_id': 'demo-repo',
+                'profile_type': 'prompt',
+                'content': {'instructions': ['租户私有 repo 规则：订单链路发布前必须核对租户开关矩阵。']},
+                'version': 1,
+                'status': 'active',
+            },
+            headers=tenant_admin_headers,
+        )
+        self.assertEqual(tenant_repo_profile_response.status_code, 200)
+        self.assertEqual(tenant_repo_profile_response.json()['data']['tenant_id'], 'tenant-demo')
+        self.assertIsNone(tenant_repo_profile_response.json()['data']['team_id'])
+
+        shared_repo_profiles = self.client.get(
+            '/api/v1/config/profile',
+            params={'scope_type': 'repo', 'scope_id': 'demo-repo'},
+            headers=request_headers,
+        )
+        self.assertEqual(shared_repo_profiles.status_code, 200)
+        self.assertTrue(
+            any(
+                item['tenant_id'] is None and item['scope_type'] == 'repo' and item['scope_id'] == 'demo-repo'
+                for item in shared_repo_profiles.json()['data']
+            )
+        )
+
+        own_team_profile = self.client.get(
+            f'/api/v1/config/profile/{team_profile_id}',
+            headers=request_headers,
+        )
+        self.assertEqual(own_team_profile.status_code, 200)
+
+        own_team_repo_profile = self.client.get(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            headers=request_headers,
+        )
+        self.assertEqual(own_team_repo_profile.status_code, 200)
+
+        own_tenant_repo_profile = self.client.get(
+            f'/api/v1/config/profile/{tenant_repo_profile_id}',
+            headers=request_headers,
+        )
+        self.assertEqual(own_tenant_repo_profile.status_code, 200)
+
+        lock_knowledge_acl = self.client.patch(
+            f'/api/v1/knowledge/{knowledge_id}',
+            json={
+                'acl': {
+                    'owners': ['user-demo'],
+                    'editors': [],
+                    'reviewers': ['reviewer-http', 'role:reviewer'],
+                    'viewers': ['user-demo'],
+                }
+            },
+            headers=request_headers,
+        )
+        self.assertEqual(lock_knowledge_acl.status_code, 200)
 
         viewer_headers = dict(request_headers)
         viewer_headers['X-User-Role'] = 'viewer'
@@ -281,6 +375,111 @@ class HttpE2EFlowTestCase(unittest.TestCase):
             headers=viewer_headers,
         )
         self.assertEqual(viewer_evaluation_run.status_code, 403)
+
+        same_team_peer_headers = {
+            'X-Request-Id': 'req_http_e2e_004',
+            'X-Tenant-Id': 'tenant-demo',
+            'X-Team-Id': 'team-demo',
+            'X-User-Id': 'user-peer',
+            'X-User-Role': 'writer',
+            'X-Client-Type': 'agent',
+        }
+        same_team_peer_knowledge = self.client.get(
+            f'/api/v1/knowledge/{knowledge_id}',
+            headers=same_team_peer_headers,
+        )
+        self.assertEqual(same_team_peer_knowledge.status_code, 404)
+
+        same_team_peer_update = self.client.patch(
+            f'/api/v1/knowledge/{knowledge_id}',
+            json={'title': 'peer should be blocked'},
+            headers={**same_team_peer_headers, 'X-User-Role': 'admin'},
+        )
+        self.assertEqual(same_team_peer_update.status_code, 403)
+
+        same_team_peer_profile = self.client.get(
+            f'/api/v1/config/profile/{team_profile_id}',
+            headers=same_team_peer_headers,
+        )
+        self.assertEqual(same_team_peer_profile.status_code, 404)
+
+        same_team_peer_repo_profile = self.client.get(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            headers=same_team_peer_headers,
+        )
+        self.assertEqual(same_team_peer_repo_profile.status_code, 200)
+
+        lock_team_repo_profile = self.client.put(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            json={
+                'scope_type': 'repo',
+                'scope_id': 'demo-repo',
+                'profile_type': 'prompt',
+                'content': {'instructions': ['团队私有 repo 规则：仅 owner 可见。']},
+                'acl': {
+                    'owners': ['user-demo'],
+                    'editors': [],
+                    'reviewers': [],
+                    'viewers': ['user-demo'],
+                },
+                'version': 2,
+                'status': 'active',
+            },
+            headers=request_headers,
+        )
+        self.assertEqual(lock_team_repo_profile.status_code, 200)
+
+        same_team_peer_locked_repo_profile = self.client.get(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            headers=same_team_peer_headers,
+        )
+        self.assertEqual(same_team_peer_locked_repo_profile.status_code, 404)
+
+        rollback_team_repo_profile = self.client.post(
+            f'/api/v1/config/profile/{team_repo_profile_id}/rollback',
+            json={'target_version': 1, 'actor_id': 'user-demo'},
+            headers=request_headers,
+        )
+        self.assertEqual(rollback_team_repo_profile.status_code, 200)
+        self.assertEqual(rollback_team_repo_profile.json()['data']['restored_from'], 1)
+
+        same_team_peer_repo_profile_after_rollback = self.client.get(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            headers=same_team_peer_headers,
+        )
+        self.assertEqual(same_team_peer_repo_profile_after_rollback.status_code, 200)
+
+        same_team_peer_profile_update = self.client.put(
+            f'/api/v1/config/profile/{team_profile_id}',
+            json={
+                'scope_type': 'team',
+                'scope_id': 'team:tenant-demo:team-demo',
+                'profile_type': 'prompt',
+                'content': {'instructions': ['peer should be blocked']},
+                'version': 2,
+                'status': 'active',
+            },
+            headers={**same_team_peer_headers, 'X-User-Role': 'admin'},
+        )
+        self.assertEqual(same_team_peer_profile_update.status_code, 403)
+
+        same_team_peer_retrieval = self.client.post(
+            '/api/v1/retrieval/query',
+            json={
+                'session_id': session_id,
+                'query': '为订单风控增加渠道黑名单校验',
+                'query_type': 'feature_impl',
+                'repo_id': 'demo-repo',
+                'branch_name': 'feature/http-e2e',
+                'file_paths': ['src/order/risk/check.ts'],
+                'token_budget': 2000,
+            },
+            headers=same_team_peer_headers,
+        )
+        self.assertEqual(same_team_peer_retrieval.status_code, 200)
+        self.assertFalse(
+            any(item['knowledge_id'] == knowledge_id for item in same_team_peer_retrieval.json()['data']['sources'])
+        )
 
         same_tenant_other_team_headers = {
             'X-Request-Id': 'req_http_e2e_003',
@@ -321,6 +520,18 @@ class HttpE2EFlowTestCase(unittest.TestCase):
             headers=same_tenant_other_team_headers,
         )
         self.assertEqual(same_tenant_other_team_profile.status_code, 404)
+
+        same_tenant_other_team_repo_profile = self.client.get(
+            f'/api/v1/config/profile/{team_repo_profile_id}',
+            headers=same_tenant_other_team_headers,
+        )
+        self.assertEqual(same_tenant_other_team_repo_profile.status_code, 404)
+
+        same_tenant_other_team_tenant_repo_profile = self.client.get(
+            f'/api/v1/config/profile/{tenant_repo_profile_id}',
+            headers=same_tenant_other_team_headers,
+        )
+        self.assertEqual(same_tenant_other_team_tenant_repo_profile.status_code, 200)
 
         same_tenant_other_team_debug = self.client.post(
             '/api/v1/retrieval/debug',
@@ -387,6 +598,12 @@ class HttpE2EFlowTestCase(unittest.TestCase):
             headers=foreign_headers,
         )
         self.assertEqual(foreign_profile.status_code, 404)
+
+        foreign_tenant_repo_profile = self.client.get(
+            f'/api/v1/config/profile/{tenant_repo_profile_id}',
+            headers=foreign_headers,
+        )
+        self.assertEqual(foreign_tenant_repo_profile.status_code, 404)
 
 
 if __name__ == '__main__':

@@ -6,6 +6,13 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class ResourceAclInput(BaseModel):
+    owners: list[str] = Field(default_factory=list)
+    editors: list[str] = Field(default_factory=list)
+    reviewers: list[str] = Field(default_factory=list)
+    viewers: list[str] = Field(default_factory=list)
+
+
 class SessionCreateRequest(BaseModel):
     repo_id: str
     branch_name: str | None = None
@@ -55,6 +62,7 @@ class ReviewRequest(BaseModel):
 class KnowledgeUpdateRequest(BaseModel):
     title: str | None = None
     content: dict[str, Any] | None = None
+    acl: ResourceAclInput | None = None
     status: str | None = None
     effective_to: datetime | None = None
 
@@ -87,6 +95,7 @@ class ConfigProfileUpsertRequest(BaseModel):
     scope_id: str
     profile_type: str
     content: dict[str, Any] = Field(default_factory=dict)
+    acl: ResourceAclInput | None = None
     version: int = 1
     status: str = "active"
 

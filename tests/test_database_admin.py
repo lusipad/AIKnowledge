@@ -13,6 +13,7 @@ from app.services.database_admin import (
     alembic_version_present,
     database_schema_status,
     initialize_database,
+    run_migrations,
     schema_drift_status,
 )
 
@@ -80,6 +81,24 @@ class DatabaseAdminTestCase(unittest.TestCase):
                 validation_engine.dispose()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_initialize_database_upgrades_existing_revision_to_latest_head(self):
+        temp_dir = Path(tempfile.mkdtemp(prefix='aiknowledge-db-admin-upgrade-'))
+        database_url = normalize_database_url(f"sqlite:///{(temp_dir / 'upgrade.db').as_posix()}")
+        try:
+            run_migrations(database_url, revision='20260326_0004')
+            initialize_database(database_url, seed_profiles=False)
+
+            engine = create_engine(database_url, connect_args={'check_same_thread': False})
+            try:
+                schema_ok, detail = schema_drift_status(engine, database_url=database_url)
+            finally:
+                engine.dispose()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        self.assertTrue(schema_ok)
+        self.assertEqual(detail['current_heads'], detail['expected_heads'])
 
     def test_schema_drift_status_reports_in_sync_after_initialize(self):
         temp_dir = Path(tempfile.mkdtemp(prefix='aiknowledge-db-admin-drift-ok-'))

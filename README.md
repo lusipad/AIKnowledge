@@ -4,7 +4,7 @@
 
 ## 当前定位
 
-- 当前版本定位为：`多租户请求隔离 + 共享仓库规则` 的过渡版
+- 当前版本定位为：`多租户请求隔离 + 平台共享/租户私有双层配置` 的过渡版
 - 当前目标是：稳定验证采集、抽取、审核、检索、反馈、审计与评估闭环
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id` 已用于会话、知识、提取任务、检索日志、审计和评估的请求级作用域隔离
 - `X-User-Role`、`AICODING_DEFAULT_USER_ROLE`、`AICODING_API_KEY_ROLES` 已用于 `viewer / writer / reviewer / admin` 四级权限裁剪
@@ -40,7 +40,8 @@
 - GitHub Actions CI 工作流
 - 数据库健康检查
 - 持续 schema drift 校验
-- 按 `tenant/team` 收紧的知识、检索、提取任务和团队级配置访问控制
+- 按 `tenant/team` 收紧的知识、检索、提取任务与配置访问控制
+- 平台共享配置与租户私有 `repo/path` 配置双层数据模型
 
 ## 目录
 
@@ -187,6 +188,8 @@ python3 -m uvicorn app.main:app --reload
 - `alembic/versions/20260325_0002_add_evaluation_run.py`
 - `alembic/versions/20260326_0003_add_team_scope_to_knowledge.py`
 - `alembic/versions/20260326_0004_add_vector_index_entry.py`
+- `alembic/versions/20260326_0005_add_resource_acl.py`
+- `alembic/versions/20260326_0006_add_config_profile_ownership.py`
 
 执行迁移：
 
@@ -419,9 +422,11 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 - `X-Request-Id` 会写入响应头，并出现在大部分响应体的 `request_id`
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id`、`X-User-Role`、`X-Client-Type` 会进入会话元数据和审计日志
-- 当前版本已对 `sessions / knowledge / retrieval / retrieval logs / extract task / audit / evaluation` 等核心读写路径按 `tenant/team` 做作用域裁剪
-- `PUT /config/profile/{profile_id}` 与 `POST /config/profile/{profile_id}/rollback` 已对 `tenant/team` scope 做归属校验，避免跨租户覆盖团队级配置
-- 共享 `global / repo / path` 配置仍属于平台级资源，租户侧默认只读
+- 当前版本已对 `sessions / knowledge / retrieval / retrieval logs / extract task / audit / evaluation / config profile` 等核心读写路径按 `tenant/team` 做作用域裁剪
+- `PUT /config/profile/{profile_id}` 与 `POST /config/profile/{profile_id}/rollback` 已对资源归属做校验：
+- 平台上下文可管理平台共享 `global / repo / path`
+- 租户上下文可管理本租户 `tenant` 与租户私有 `repo / path`
+- 团队上下文可额外管理本团队 `team` 与团队私有 `repo / path`
 - 当前内置角色能力为：`viewer` 只读、`writer` 可写会话/检索/反馈、`reviewer` 可审核知识与查看信号、`admin` 可变更配置/知识与执行评估
 
 ## 配套文件
@@ -437,8 +442,8 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 ## 当前限制
 
-- 当前版本已完成会话、知识、提取任务、检索日志、审计、评估及团队级配置的请求级 `tenant/team` 隔离；但 `global / repo / path` 共享配置仍未拆成独立租户数据模型
+- `repo / path` 私有配置的归属当前仍按请求上下文自动推导，尚未提供在单次写请求中显式切换“租户私有 / 团队私有”的独立参数
 - `pgvector` 后端已支持数据库持久化向量层，但当前仍使用跨数据库兼容的 JSON 向量存储，尚未引入 PostgreSQL 原生 `vector` 列与 ANN 索引优化
-- 已提供 `viewer / writer / reviewer / admin` 四级权限控制，但尚未接入外部 IAM、组织级角色同步和更细的资源级 ACL
+- 已提供 `viewer / writer / reviewer / admin` 四级权限控制，以及知识 / 配置资源级 ACL；但尚未接入外部 IAM、组织级角色同步和跨系统身份治理
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast

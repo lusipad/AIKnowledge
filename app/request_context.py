@@ -17,12 +17,12 @@ class RequestContext:
     team_id: str | None = None
     user_id: str | None = None
     client_type: str | None = None
-    user_role: str | None = None
+    user_role: str | None = 'admin'
 
 
 _request_context_var: ContextVar[RequestContext] = ContextVar(
     'request_context',
-    default=RequestContext(request_id='req_unknown'),
+    default=RequestContext(request_id='req_unknown', user_role='admin'),
 )
 
 

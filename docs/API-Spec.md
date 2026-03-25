@@ -14,7 +14,7 @@ API 设计目标：
 - 保持资源语义清晰。
 - 兼容同步请求与异步任务。
 - 为检索、抽取、审核、反馈提供统一接口。
-- 目标架构支持多租户与多范围权限控制；当前实现已对 `sessions / knowledge / retrieval / extract task / audit / evaluation` 等核心路径按 `tenant/team` 做作用域裁剪，并提供 `viewer / writer / reviewer / admin` 四级角色授权；平台级共享资源治理仍保留进一步细化空间。
+- 目标架构支持多租户与多范围权限控制；当前实现已对 `sessions / knowledge / retrieval / extract task / audit / evaluation / config profile` 等核心路径按 `tenant/team` 做作用域裁剪，并提供 `viewer / writer / reviewer / admin` 四级角色授权，以及知识/配置资源级 ACL。
 
 ## 2. 通用约定
 
@@ -248,6 +248,10 @@ API 设计目标：
 
 用途：获取知识明细、来源、标签、版本、状态。
 
+响应补充：
+
+- `acl`
+
 ## 5.4 查询知识列表
 
 ### `GET /knowledge`
@@ -268,6 +272,10 @@ API 设计目标：
 ### `PATCH /knowledge/{knowledge_id}`
 
 用途：修改标题、内容、标签、有效期等可编辑字段。
+
+可选字段：
+
+- `acl`
 
 ## 5.6 下线知识
 
@@ -318,7 +326,14 @@ API 设计目标：
 说明：
 
 - 平台上下文可写 `global / repo / path` 共享配置。
-- 租户上下文仅允许写入自身的 `tenant` 或 `team` scope 配置。
+- 租户上下文可写入自身的 `tenant` scope 配置，以及租户私有 `repo / path` 配置。
+- 带 `X-Team-Id` 的团队上下文可额外写入自身的 `team` scope 配置，以及团队私有 `repo / path` 配置。
+- 可选传入 `acl` 控制 profile 的 owners / editors / reviewers / viewers。
+
+响应补充：
+
+- `tenant_id`
+- `team_id`
 
 ## 7.3 回滚配置
 

@@ -48,6 +48,14 @@ from app.services.retrieval import (
     scope_matches,
     select_config_rules,
 )
+from app.services.resource_acl import (
+    can_edit_resource,
+    can_review_resource,
+    can_view_resource,
+    default_config_acl,
+    default_knowledge_acl,
+    normalize_acl,
+)
 from app.services.signals import build_signal_from_event
 from app.settings import load_settings
 from app.utils import generate_id
@@ -143,18 +151,82 @@ def _assert_profile_scope_writable(
             if scope_id != expected_scope_id:
                 raise AuthorizationError('team scoped profile is not writable in current team context')
             return
-        raise AuthorizationError('shared global/repo/path profiles require platform context')
+        if scope_type in {'repo', 'path'}:
+            return
+        raise AuthorizationError('shared global profiles require platform context')
 
     if scope_type in {'tenant', 'team'}:
         raise AuthorizationError('tenant/team scoped profiles require tenant context')
 
 
+def _resolve_new_profile_owner(
+    *,
+    scope_type: str,
+    request_context: RequestContext,
+) -> tuple[str | None, str | None]:
+    if not request_context.tenant_id:
+        return None, None
+
+    if scope_type == 'tenant':
+        return request_context.tenant_id, None
+    if scope_type == 'team':
+        return request_context.tenant_id, request_context.team_id
+    if scope_type in {'repo', 'path'}:
+        return request_context.tenant_id, request_context.team_id
+    return None, None
+
+
+def _ensure_profile_owner_writable(profile: ConfigProfile, request_context: RequestContext) -> None:
+    if not profile.tenant_id:
+        if request_context.tenant_id:
+            raise AuthorizationError('shared config profile requires platform context')
+        return
+
+    if not request_context.tenant_id or profile.tenant_id != request_context.tenant_id:
+        raise AuthorizationError('config profile is not writable in current tenant context')
+
+    if profile.team_id and profile.team_id != request_context.team_id:
+        raise AuthorizationError('config profile is not writable in current team context')
+
+
+def _ensure_scope_matches_profile_owner(
+    *,
+    scope_type: str,
+    scope_id: str,
+    profile: ConfigProfile,
+) -> None:
+    if not profile.tenant_id:
+        if scope_type not in {'global', 'repo', 'path'}:
+            raise InvalidOperationError('shared config profile cannot be reassigned to tenant/team scope')
+        return
+
+    if profile.team_id:
+        if scope_type == 'tenant':
+            raise InvalidOperationError('team-owned config profile cannot be reassigned to tenant scope')
+        if scope_type == 'team':
+            expected_scope_id = f'team:{profile.tenant_id}:{profile.team_id}'
+            if scope_id != expected_scope_id:
+                raise AuthorizationError('team scoped profile is not writable in current team context')
+        return
+
+    if scope_type == 'team':
+        raise InvalidOperationError('tenant-owned config profile cannot be reassigned to team scope')
+    if scope_type == 'tenant':
+        expected_scope_id = f'tenant:{profile.tenant_id}'
+        if scope_id != expected_scope_id:
+            raise AuthorizationError('tenant scoped profile is not writable in current tenant context')
+
+
 def ensure_profile_writable(profile: ConfigProfile, request_context: RequestContext | None = None) -> None:
-    _assert_profile_scope_writable(
+    current_context = _resolve_request_context(request_context)
+    _ensure_profile_owner_writable(profile, current_context)
+    _ensure_scope_matches_profile_owner(
         scope_type=profile.scope_type,
         scope_id=profile.scope_id,
-        request_context=_resolve_request_context(request_context),
+        profile=profile,
     )
+    if not can_edit_resource(profile.acl, current_context):
+        raise AuthorizationError('config profile is not writable for current user')
 
 
 def create_session_data(
@@ -289,8 +361,11 @@ def _record_profile_version(database: Session, profile: ConfigProfile) -> None:
     database.add(
         ConfigProfileVersion(
             profile_id=profile.profile_id,
+            tenant_id=profile.tenant_id,
+            team_id=profile.team_id,
             version=profile.version,
             content=profile.content,
+            acl=profile.acl,
             status=profile.status,
         )
     )
@@ -310,6 +385,10 @@ def upsert_profile_data(
         scope_id=payload.scope_id,
         request_context=current_context,
     )
+    owner_tenant_id, owner_team_id = _resolve_new_profile_owner(
+        scope_type=payload.scope_type,
+        request_context=current_context,
+    )
     profile_exists = database.scalar(select(ConfigProfile.profile_id).where(ConfigProfile.profile_id == profile_id))
     profile = database.scalar(
         apply_config_scope(select(ConfigProfile).where(ConfigProfile.profile_id == profile_id), current_context)
@@ -317,24 +396,31 @@ def upsert_profile_data(
     if profile_id and profile_exists and not profile:
         raise ResourceNotFoundError('profile not found')
     if profile:
-        _assert_profile_scope_writable(
-            scope_type=profile.scope_type,
-            scope_id=profile.scope_id,
-            request_context=current_context,
+        _ensure_profile_owner_writable(profile, current_context)
+        _ensure_scope_matches_profile_owner(
+            scope_type=payload.scope_type,
+            scope_id=payload.scope_id,
+            profile=profile,
         )
+        if not can_edit_resource(profile.acl, current_context):
+            raise AuthorizationError('config profile is not writable for current user')
         profile.scope_type = payload.scope_type
         profile.scope_id = payload.scope_id
         profile.profile_type = payload.profile_type
         profile.content = payload.content
+        profile.acl = normalize_acl(payload.acl.model_dump() if payload.acl else profile.acl)
         profile.version = max(profile.version + 1, payload.version)
         profile.status = payload.status
     else:
         profile = ConfigProfile(
             profile_id=profile_id or generate_id('cfg'),
+            tenant_id=owner_tenant_id,
+            team_id=owner_team_id,
             scope_type=payload.scope_type,
             scope_id=payload.scope_id,
             profile_type=payload.profile_type,
             content=payload.content,
+            acl=normalize_acl(payload.acl.model_dump()) if payload.acl else default_config_acl(current_context.user_id),
             version=max(1, payload.version),
             status=payload.status,
         )
@@ -356,6 +442,8 @@ def upsert_profile_data(
     database.commit()
     return {
         'profile_id': profile.profile_id,
+        'tenant_id': profile.tenant_id,
+        'team_id': profile.team_id,
         'scope_type': profile.scope_type,
         'scope_id': profile.scope_id,
         'profile_type': profile.profile_type,
@@ -448,6 +536,7 @@ def _execute_extract_task(
         memory_type=extraction.memory_type,
         title=extraction.title,
         content=extraction.content,
+        acl=default_knowledge_acl(actor_id),
         status='draft',
         quality_score=extraction.quality_score,
         confidence_score=extraction.confidence_score,
@@ -682,6 +771,8 @@ def get_knowledge_data(knowledge_id: str, database: Session) -> dict:
     knowledge = _get_scoped_knowledge(database, knowledge_id)
     if not knowledge:
         raise ResourceNotFoundError('knowledge not found')
+    if not can_view_resource(knowledge.acl, get_request_context()):
+        raise ResourceNotFoundError('knowledge not found')
 
     return {
         'knowledge_id': knowledge.knowledge_id,
@@ -692,6 +783,7 @@ def get_knowledge_data(knowledge_id: str, database: Session) -> dict:
         'scope_id': knowledge.scope_id,
         'content': knowledge.content,
         'status': knowledge.status,
+        'acl': knowledge.acl,
         'quality_score': float(knowledge.quality_score),
         'confidence_score': float(knowledge.confidence_score),
         'freshness_score': float(knowledge.freshness_score),
@@ -713,6 +805,8 @@ def review_knowledge_data(payload: ReviewRequest, database: Session) -> dict:
     knowledge = _get_scoped_knowledge(database, payload.knowledge_id)
     if not knowledge:
         raise ResourceNotFoundError('knowledge not found')
+    if not can_review_resource(knowledge.acl, get_request_context()):
+        raise AuthorizationError('knowledge is not reviewable for current user')
 
     next_status = {'approve': 'active', 'reject': 'deprecated', 'revise': 'draft'}.get(payload.decision)
     if not next_status:
@@ -775,6 +869,7 @@ def build_context_pack_data(
             apply_config_scope(select(ConfigProfile).where(ConfigProfile.status == 'active'), current_context)
         ).all()
         if scope_matches(profile.scope_type, profile.scope_id, payload.repo_id, payload.file_paths)
+        and can_view_resource(profile.acl, current_context)
     ]
     ranked_profile_rules, profile_vector_backend_name = rank_config_rules(
         matching_profiles,
@@ -791,6 +886,7 @@ def build_context_pack_data(
             apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.status == 'active'), current_context)
         ).all()
         if scope_matches(item.scope_type, item.scope_id, payload.repo_id, payload.file_paths)
+        and can_view_resource(item.acl, current_context)
     ]
 
     ranked_items, vector_backend_name = rank_knowledge_items(
@@ -907,6 +1003,8 @@ def submit_knowledge_feedback_data(
     current_context = _resolve_request_context(request_context)
     knowledge = _get_scoped_knowledge(database, payload.knowledge_id, request_context=current_context)
     if not knowledge:
+        raise ResourceNotFoundError('knowledge not found')
+    if not can_view_resource(knowledge.acl, current_context):
         raise ResourceNotFoundError('knowledge not found')
 
     database.add(

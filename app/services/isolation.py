@@ -42,20 +42,49 @@ def apply_retrieval_request_scope(statement, request_context: RequestContext | N
 
 def apply_config_scope(statement, request_context: RequestContext | None = None):
     current_context = resolve_request_scope(request_context)
-    clauses = [ConfigProfile.scope_type.in_(('global', 'repo', 'path'))]
     if not current_context.tenant_id:
-        return statement.where(*clauses)
-    tenant_scopes = [f'tenant:{current_context.tenant_id}']
+        return statement
+
+    shared_clause = and_(
+        ConfigProfile.scope_type.in_(('global', 'repo', 'path')),
+        ConfigProfile.tenant_id.is_(None),
+        ConfigProfile.team_id.is_(None),
+    )
+    tenant_private_clause = and_(
+        ConfigProfile.scope_type.in_(('repo', 'path')),
+        ConfigProfile.tenant_id == current_context.tenant_id,
+        ConfigProfile.team_id.is_(None),
+    )
+    tenant_scope_clause = and_(
+        ConfigProfile.scope_type == 'tenant',
+        ConfigProfile.tenant_id == current_context.tenant_id,
+        ConfigProfile.scope_id == f'tenant:{current_context.tenant_id}',
+    )
+    team_scoped_clauses = []
     if current_context.team_id:
-        tenant_scopes.append(f'team:{current_context.tenant_id}:{current_context.team_id}')
-    clauses.append(
+        team_scoped_clauses.extend(
+            [
+                and_(
+                    ConfigProfile.scope_type.in_(('repo', 'path')),
+                    ConfigProfile.tenant_id == current_context.tenant_id,
+                    ConfigProfile.team_id == current_context.team_id,
+                ),
+                and_(
+                    ConfigProfile.scope_type == 'team',
+                    ConfigProfile.tenant_id == current_context.tenant_id,
+                    ConfigProfile.team_id == current_context.team_id,
+                    ConfigProfile.scope_id == f'team:{current_context.tenant_id}:{current_context.team_id}',
+                ),
+            ]
+        )
+    return statement.where(
         or_(
-            ConfigProfile.scope_type.in_(('global', 'repo', 'path')),
-            and_(ConfigProfile.scope_type == 'tenant', ConfigProfile.scope_id == tenant_scopes[0]),
-            and_(ConfigProfile.scope_type == 'team', ConfigProfile.scope_id.in_(tenant_scopes[1:] or ['__never__'])),
+            shared_clause,
+            tenant_private_clause,
+            tenant_scope_clause,
+            *team_scoped_clauses,
         )
     )
-    return statement.where(*clauses)
 
 
 def apply_audit_scope(statement, request_context: RequestContext | None = None):

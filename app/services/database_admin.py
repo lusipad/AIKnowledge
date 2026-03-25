@@ -118,6 +118,10 @@ def initialize_database(database_url: str | None = None, *, seed_profiles: bool 
             run_migrations(normalized_url)
         elif not has_alembic_version:
             stamp_database(normalized_url)
+        else:
+            schema_in_sync, detail = schema_drift_status(bootstrap_engine, database_url=normalized_url)
+            if detail['current_heads'] != detail['expected_heads']:
+                run_migrations(normalized_url)
 
         if not seed_profiles:
             return

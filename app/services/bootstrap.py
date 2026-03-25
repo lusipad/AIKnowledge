@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ConfigProfile, ConfigProfileVersion
+from app.services.resource_acl import default_config_acl
 from app.utils import generate_id
 
 
@@ -46,10 +47,13 @@ def seed_default_profiles(database: Session) -> None:
         database.add(
             ConfigProfile(
                 profile_id=profile_id,
+                tenant_id=None,
+                team_id=None,
                 scope_type=profile["scope_type"],
                 scope_id=profile["scope_id"],
                 profile_type=profile["profile_type"],
                 content=profile["content"],
+                acl=default_config_acl(None),
                 version=profile["version"],
                 status=profile["status"],
             )
@@ -57,8 +61,11 @@ def seed_default_profiles(database: Session) -> None:
         database.add(
             ConfigProfileVersion(
                 profile_id=profile_id,
+                tenant_id=None,
+                team_id=None,
                 version=profile["version"],
                 content=profile["content"],
+                acl=default_config_acl(None),
                 status=profile["status"],
             )
         )

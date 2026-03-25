@@ -87,6 +87,7 @@ class KnowledgeItem(Base):
     memory_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     content: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    acl: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", index=True)
     quality_score: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=0.6)
     confidence_score: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=0.6)
@@ -225,10 +226,13 @@ class ConfigProfile(Base):
     __tablename__ = "config_profile"
 
     profile_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     scope_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     scope_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     profile_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     content: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    acl: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -239,8 +243,11 @@ class ConfigProfileVersion(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     profile_id: Mapped[str] = mapped_column(String(64), index=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    acl: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
