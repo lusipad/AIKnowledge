@@ -43,6 +43,10 @@ def _clamp_score(value: float | int | str | None, default: float) -> float:
     return round(max(0.1, min(numeric, 1.0)), 4)
 
 
+def _contains_cjk(text: str) -> bool:
+    return bool(re.search(r'[\u4e00-\u9fff]', text or ''))
+
+
 def build_joined_summary(signal: KnowledgeSignal, events: list[SessionEvent]) -> str:
     return '\n'.join(event.summary for event in reversed(events)) or signal.source_refs.get('summary', '')
 
@@ -128,8 +132,10 @@ def _extract_json_block(text: str) -> dict:
 def _build_llm_messages(signal: KnowledgeSignal, session: ConversationSession | None, events: list[SessionEvent]) -> list[dict]:
     joined_summary = build_joined_summary(signal, events)
     file_paths = signal.source_refs.get('file_paths') or []
+    output_language = 'zh-CN' if _contains_cjk(joined_summary) else 'same-as-input'
     instructions = {
         'task': 'Extract one reusable AI coding knowledge item from the provided session events.',
+        'output_language': output_language,
         'output_format': {
             'title': 'string',
             'knowledge_type': 'rule|case|procedure',
@@ -148,6 +154,7 @@ def _build_llm_messages(signal: KnowledgeSignal, session: ConversationSession | 
             'Return strict JSON only.',
             'Keep the output grounded in the supplied events.',
             'Prefer repo scope unless the knowledge is clearly limited to a path.',
+            'If the source summaries are Chinese, output Chinese.',
         ],
     }
     input_payload = {
@@ -257,6 +264,10 @@ def extract_knowledge_draft(
         )
         payload = _extract_json_block(completion.response_text)
         llm_draft = _normalize_llm_draft(payload, signal, session, events, app_settings)
+        if _contains_cjk(build_joined_summary(signal, events)) and not _contains_cjk(
+            f"{llm_draft.title}\n{llm_draft.content.get('background', '')}\n{llm_draft.content.get('summary', '')}"
+        ):
+            return heuristic_draft
         if keyword_overlap_score(llm_draft.title, build_joined_summary(signal, events)) < 0.1 and signal.signal_type == 'rule':
             return heuristic_draft
         return llm_draft

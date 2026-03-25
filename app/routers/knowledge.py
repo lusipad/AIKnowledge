@@ -116,6 +116,8 @@ def _find_existing_extract_result(database: Session, signal_id: str) -> tuple[Kn
 def create_extract_task(payload: ExtractRequest, database: Session = Depends(get_db)):
     request_context = get_request_context()
     signals = database.scalars(select(KnowledgeSignal).where(KnowledgeSignal.signal_id.in_(payload.signal_ids))).all()
+    signal_order = {signal_id: index for index, signal_id in enumerate(payload.signal_ids)}
+    signals.sort(key=lambda signal: signal_order.get(signal.signal_id, len(signal_order)))
     if not signals:
         raise HTTPException(status_code=404, detail="signals not found")
 
