@@ -67,6 +67,15 @@ def extract_chat_completion_text(payload: dict) -> str:
             if isinstance(item, dict) and item.get('type') == 'text':
                 text_parts.append(str(item.get('text', '')).strip())
         return '\n'.join(part for part in text_parts if part)
+    reasoning_content = message.get('reasoning_content')
+    if isinstance(reasoning_content, str):
+        return reasoning_content.strip()
+    if isinstance(reasoning_content, list):
+        text_parts = []
+        for item in reasoning_content:
+            if isinstance(item, dict) and item.get('type') == 'text':
+                text_parts.append(str(item.get('text', '')).strip())
+        return '\n'.join(part for part in text_parts if part)
     return str(content or '').strip()
 
 

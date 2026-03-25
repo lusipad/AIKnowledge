@@ -91,6 +91,15 @@ export AICODING_LLM_CHAT_PATH='/v1/chat/completions'
 python3 -m uvicorn app.main:app --reload
 ```
 
+DeepSeek 示例：
+
+```bash
+export AICODING_LLM_BASE_URL='https://api.deepseek.com'
+export AICODING_LLM_API_KEY='replace-with-real-secret'
+export AICODING_LLM_MODEL='deepseek-chat'
+python3 scripts/verify_llm.py --prompt "Reply with ok only."
+```
+
 启用 `AICODING_API_KEY` 后，除 `/`、`/healthz`、`/docs`、`/openapi.json` 外，其余接口都需要：
 
 - `X-API-Key: your-secret`
