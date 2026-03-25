@@ -20,6 +20,7 @@ const defaultScenario = {
 const state = {
   sessionId: '',
   signalIds: [],
+  knowledgeIds: [],
   knowledgeId: '',
   retrievalRequestId: '',
   profileId: '',
@@ -369,6 +370,7 @@ async function extractKnowledge() {
     signal_ids: state.signalIds,
     force: false,
   });
+  state.knowledgeIds = (response.data.items || []).map((item) => item.knowledge_id);
   const firstItem = response.data.items?.[0];
   if (!firstItem) {
     throw new Error('抽取未返回知识条目。');
@@ -383,20 +385,24 @@ async function extractKnowledge() {
 }
 
 async function approveKnowledge() {
-  if (!state.knowledgeId) {
+  const knowledgeIds = state.knowledgeIds.length ? state.knowledgeIds : [state.knowledgeId].filter(Boolean);
+  if (!knowledgeIds.length) {
     throw new Error('请先完成知识抽取。');
   }
   updateWorkflowView('approve');
-  const response = await request('POST', '/api/v1/knowledge/review', {
-    knowledge_id: state.knowledgeId,
-    decision: 'approve',
-    reviewer_id: 'console-reviewer',
-    comment: 'Console auto approval',
-  });
+  let response = null;
+  for (const knowledgeId of knowledgeIds) {
+    response = await request('POST', '/api/v1/knowledge/review', {
+      knowledge_id: knowledgeId,
+      decision: 'approve',
+      reviewer_id: 'console-reviewer',
+      comment: 'Console auto approval',
+    });
+  }
   const knowledgeDetail = await request('GET', `/api/v1/knowledge/${state.knowledgeId}`);
   summarizeKnowledge(knowledgeDetail);
   markWorkflowComplete('approve');
-  appendLog('success', `知识已审核通过，状态为 ${response.data.status}。`);
+  appendLog('success', `知识已审核通过 ${knowledgeIds.length} 条，最终状态为 ${response.data.status}。`);
   return response;
 }
 
@@ -407,7 +413,11 @@ function summarizeRetrieval(payload) {
     `规则数：${(payload.data.rules || []).length}`,
     `案例数：${(payload.data.cases || []).length}`,
     `流程数：${(payload.data.procedures || []).length}`,
-    `来源：${sources.map((item) => item.knowledge_id).join(', ') || '无'}`,
+    `来源：${
+      sources
+        .map((item) => `${item.title || item.knowledge_id} (${Number(item.score || 0).toFixed(3)})`)
+        .join(' | ') || '无'
+    }`,
   ].join('\n');
   elements.retrievalStatusTag.textContent = '已检索';
   renderJson(elements.retrievalJson, payload);
@@ -526,6 +536,7 @@ async function runDemo() {
   state.profileId = '';
   state.sessionId = '';
   state.signalIds = [];
+  state.knowledgeIds = [];
   state.knowledgeId = '';
   state.retrievalRequestId = '';
   renderChips();
@@ -535,8 +546,12 @@ async function runDemo() {
   renderJson(elements.knowledgeJson, '暂无数据');
   renderJson(elements.retrievalJson, '暂无数据');
   renderJson(elements.auditJson, '暂无数据');
-  await loadHealth();
-  await verifyLlm();
+  const health = await loadHealth();
+  if (health.llm?.configured) {
+    await verifyLlm();
+  } else {
+    appendLog('success', '当前未配置外部 LLM，示例将使用启发式抽取继续执行。');
+  }
   await ensureProfile();
   await createSession();
   await appendEvents();

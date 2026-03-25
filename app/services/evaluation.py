@@ -432,6 +432,7 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
     extract_response = None
     extract_task_response = None
     knowledge_response = None
+    extracted_knowledge_ids: list[str] = []
     if signal_ids:
         extract_response, extract_duration_ms, extract_error = run_step(
             'extract_knowledge',
@@ -440,6 +441,8 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
         )
         if extract_response:
             responses['extract'] = extract_response
+            extracted_knowledge_ids = [item['knowledge_id'] for item in extract_response['data']['items']]
+            artifacts['knowledge_ids'] = extracted_knowledge_ids
             first_item = extract_response['data']['items'][0]
             artifacts['extract_task_id'] = first_item['task_id']
             artifacts['knowledge_id'] = first_item['knowledge_id']
@@ -509,34 +512,51 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
         )
 
     review_response = None
-    if knowledge_response:
+    if extracted_knowledge_ids:
         review_response, _, review_error = run_step(
             'approve_knowledge',
-            '审核知识',
-            lambda: review_knowledge(
-                ReviewRequest(
-                    knowledge_id=knowledge_response['data']['knowledge_id'],
-                    decision='approve',
-                    reviewer_id='evaluation-runner',
-                    comment='Evaluation auto approval',
-                ),
-                database,
-            ),
+            '审核知识并激活检索样本',
+            lambda: [
+                review_knowledge(
+                    ReviewRequest(
+                        knowledge_id=knowledge_id,
+                        decision='approve',
+                        reviewer_id='evaluation-runner',
+                        comment='Evaluation auto approval',
+                    ),
+                    database,
+                )
+                for knowledge_id in extracted_knowledge_ids
+            ],
         )
         if review_response:
             responses['review'] = review_response
-            knowledge_response = get_knowledge(knowledge_response['data']['knowledge_id'], database)
+            artifacts['approved_knowledge_ids'] = extracted_knowledge_ids
+            primary_knowledge_id = artifacts.get('knowledge_id')
+            if primary_knowledge_id:
+                knowledge_response = get_knowledge(primary_knowledge_id, database)
             responses['knowledge'] = knowledge_response
         _build_check(
             checks,
             check_id='knowledge_active_after_review',
             label='知识审核后变为 active',
             category='extraction',
-            passed=bool(knowledge_response and knowledge_response['data']['status'] == 'active'),
+            passed=bool(
+                extracted_knowledge_ids
+                and all(
+                    get_knowledge(knowledge_id, database)['data']['status'] == 'active'
+                    for knowledge_id in extracted_knowledge_ids
+                )
+            ),
             weight=3,
-            detail='知识状态已激活' if knowledge_response and knowledge_response['data']['status'] == 'active' else str(review_error),
-            expected='status=active',
-            actual=knowledge_response['data']['status'] if knowledge_response else None,
+            detail=f'已激活 {len(extracted_knowledge_ids)} 条知识' if review_response else str(review_error),
+            expected='所有抽取知识均为 active',
+            actual={
+                knowledge_id: get_knowledge(knowledge_id, database)['data']['status']
+                for knowledge_id in extracted_knowledge_ids
+            }
+            if extracted_knowledge_ids
+            else None,
             critical=True,
         )
 
@@ -600,6 +620,69 @@ def run_evaluation(database: Session, settings: AppSettings, payload: Any) -> di
             expected='sources 包含 knowledge_id',
             actual=retrieval_sources,
             critical=True,
+        )
+        generated_knowledge_ids = set(artifacts.get('approved_knowledge_ids') or artifacts.get('knowledge_ids') or [])
+        generated_knowledge_rank = next(
+            (index + 1 for index, item in enumerate(retrieval_sources) if item['knowledge_id'] in generated_knowledge_ids),
+            None,
+        )
+        config_source_count = len([item for item in retrieval_sources if item.get('source_type') == 'config_profile'])
+        context_summary = retrieval_response['data']['context_summary'] if retrieval_response else ''
+        _build_check(
+            checks,
+            check_id='retrieval_generated_knowledge_prominent',
+            label='本次生成知识位于前排结果',
+            category='retrieval',
+            passed=generated_knowledge_rank is not None and generated_knowledge_rank <= 3,
+            weight=6,
+            detail=f'生成知识排名为第 {generated_knowledge_rank} 位' if generated_knowledge_rank else '未进入 sources',
+            expected='generated knowledge rank <= 3',
+            actual={'rank': generated_knowledge_rank, 'sources': retrieval_sources[:5]},
+            critical=True,
+        )
+        _build_check(
+            checks,
+            check_id='retrieval_summary_query_relevant',
+            label='上下文摘要与查询保持相关',
+            category='retrieval',
+            passed=keyword_overlap_score(scenario['query'], context_summary) >= 0.18,
+            weight=5,
+            detail='摘要与查询关键词保持相关' if context_summary else '摘要为空',
+            expected='keyword overlap >= 0.18',
+            actual=round(keyword_overlap_score(scenario['query'], context_summary), 4) if context_summary else 0,
+            critical=True,
+        )
+        primary_knowledge_text = ''
+        if knowledge_response:
+            primary_content = knowledge_response['data']['content']
+            primary_knowledge_text = '\n'.join(
+                [
+                    knowledge_response['data']['title'],
+                    primary_content.get('conclusion', ''),
+                    primary_content.get('summary', ''),
+                ]
+            )
+        _build_check(
+            checks,
+            check_id='retrieval_summary_mentions_primary_knowledge',
+            label='上下文摘要能体现主知识结论',
+            category='retrieval',
+            passed=bool(context_summary) and keyword_overlap_score(primary_knowledge_text, context_summary) >= 0.1,
+            weight=4,
+            detail='摘要已体现主知识内容' if context_summary else '摘要为空',
+            expected='summary overlaps primary knowledge >= 0.1',
+            actual=round(keyword_overlap_score(primary_knowledge_text, context_summary), 4) if context_summary else 0,
+        )
+        _build_check(
+            checks,
+            check_id='retrieval_config_rules_bounded',
+            label='配置规则数量受控，不淹没检索结果',
+            category='retrieval',
+            passed=config_source_count <= 3,
+            weight=4,
+            detail=f'config sources={config_source_count}',
+            expected='config source count <= 3',
+            actual=config_source_count,
         )
 
     if retrieval_response and knowledge_response:

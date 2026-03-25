@@ -68,6 +68,11 @@ class EvaluationApiTestCase(unittest.TestCase):
         self.assertGreaterEqual(run_payload['score'], 90)
         self.assertEqual(run_payload['artifacts']['identity']['tenant_id'], 'tenant-eval')
         self.assertTrue(run_payload['artifacts']['knowledge_id'].startswith('kn_'))
+        self.assertGreaterEqual(len(run_payload['artifacts']['knowledge_ids']), 1)
+        self.assertIn('retrieval_generated_knowledge_prominent', [item['check_id'] for item in run_payload['checks']])
+        self.assertIn('retrieval_summary_query_relevant', [item['check_id'] for item in run_payload['checks']])
+        prominent_check = next(item for item in run_payload['checks'] if item['check_id'] == 'retrieval_generated_knowledge_prominent')
+        self.assertTrue(prominent_check['passed'])
 
         history_response = self.client.get('/api/v1/evaluation/runs', headers=headers)
         self.assertEqual(history_response.status_code, 200)
