@@ -254,6 +254,20 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         )
         self.assertEqual(foreign_retrieval_log.status_code, 404)
 
+        foreign_knowledge_feedback = self.client.post(
+            '/api/v1/feedback/knowledge',
+            json={
+                'knowledge_id': knowledge_id,
+                'request_id': request_id,
+                'feedback_type': 'accepted',
+                'feedback_score': 5,
+                'feedback_text': 'should be blocked',
+                'created_by': 'user-other',
+            },
+            headers=foreign_headers,
+        )
+        self.assertEqual(foreign_knowledge_feedback.status_code, 404)
+
         foreign_audit_logs = self.client.get('/api/v1/audit/logs', headers=foreign_headers)
         self.assertEqual(foreign_audit_logs.status_code, 200)
         self.assertEqual(len(foreign_audit_logs.json()['data']), 0)

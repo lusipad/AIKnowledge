@@ -60,6 +60,28 @@ def _resolve_request_context(request_context: RequestContext | None = None) -> R
     return request_context or get_request_context()
 
 
+def _get_scoped_session(
+    database: Session,
+    session_id: str,
+    *,
+    request_context: RequestContext | None = None,
+) -> ConversationSession | None:
+    return database.scalar(
+        apply_session_scope(select(ConversationSession).where(ConversationSession.session_id == session_id), request_context)
+    )
+
+
+def _get_scoped_knowledge(
+    database: Session,
+    knowledge_id: str,
+    *,
+    request_context: RequestContext | None = None,
+) -> KnowledgeItem | None:
+    return database.scalar(
+        apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id), request_context)
+    )
+
+
 def create_session_data(
     payload: SessionCreateRequest,
     database: Session,
@@ -116,7 +138,7 @@ def append_context_events_data(
     request_context: RequestContext | None = None,
 ) -> dict:
     current_context = _resolve_request_context(request_context)
-    session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == payload.session_id))
+    session = _get_scoped_session(database, payload.session_id, request_context=current_context)
     if not session:
         raise ResourceNotFoundError('session not found')
 
@@ -253,7 +275,7 @@ def _load_signal_context(
     database: Session,
     signal: KnowledgeSignal,
 ) -> tuple[ConversationSession | None, list[SessionEvent], str]:
-    session = database.scalar(select(ConversationSession).where(ConversationSession.session_id == signal.session_id))
+    session = _get_scoped_session(database, signal.session_id)
     events = database.scalars(
         select(SessionEvent).where(SessionEvent.session_id == signal.session_id).order_by(SessionEvent.event_time.desc()).limit(10)
     ).all()
@@ -554,7 +576,7 @@ def get_extract_task_data(task_id: str, database: Session) -> dict:
 
 
 def get_knowledge_data(knowledge_id: str, database: Session) -> dict:
-    knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
+    knowledge = _get_scoped_knowledge(database, knowledge_id)
     if not knowledge:
         raise ResourceNotFoundError('knowledge not found')
 
@@ -585,7 +607,7 @@ def get_knowledge_data(knowledge_id: str, database: Session) -> dict:
 
 
 def review_knowledge_data(payload: ReviewRequest, database: Session) -> dict:
-    knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == payload.knowledge_id))
+    knowledge = _get_scoped_knowledge(database, payload.knowledge_id)
     if not knowledge:
         raise ResourceNotFoundError('knowledge not found')
 
@@ -619,9 +641,7 @@ def review_knowledge_data(payload: ReviewRequest, database: Session) -> dict:
 def build_context_pack_data(database: Session, payload: RetrievalQueryRequest, *, persist: bool) -> tuple[dict, dict, str]:
     request_id = generate_id('ret')
     if payload.session_id:
-        session = database.scalar(
-            apply_session_scope(select(ConversationSession).where(ConversationSession.session_id == payload.session_id))
-        )
+        session = _get_scoped_session(database, payload.session_id)
         if persist and not session:
             raise ResourceNotFoundError('session not found')
     if persist:
@@ -758,7 +778,7 @@ def submit_knowledge_feedback_data(
     request_context: RequestContext | None = None,
 ) -> dict:
     current_context = _resolve_request_context(request_context)
-    knowledge = database.scalar(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == payload.knowledge_id))
+    knowledge = _get_scoped_knowledge(database, payload.knowledge_id, request_context=current_context)
     if not knowledge:
         raise ResourceNotFoundError('knowledge not found')
 

@@ -412,7 +412,8 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 - `X-Request-Id` 会写入响应头，并出现在大部分响应体的 `request_id`
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id`、`X-Client-Type` 会进入会话元数据和审计日志
-- 当前试点版不会基于这些字段做跨租户 / 跨团队隔离过滤
+- 当前试点版已对 `sessions / knowledge / retrieval logs / audit / evaluation` 等核心读取接口按 `tenant/team` 做隔离裁剪
+- 但仍未实现完整的租户级数据模型隔离、角色权限裁剪和所有写路径的强约束
 
 ## 配套文件
 
@@ -427,7 +428,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 ## 当前限制
 
-- 当前版本默认服务于 `单团队 / 单仓库` 试点场景，尚未实现真实多租户隔离与跨团队权限裁剪
+- 当前版本默认服务于 `单团队 / 单仓库` 试点场景；已支持核心读取接口按 `tenant/team` 隔离，但尚未完成完整多租户数据隔离与跨团队权限裁剪
 - `pgvector` 存储层仍是占位后端，尚未把 embedding 持久化到 PostgreSQL 向量索引
 - 权限和敏感信息控制仍是基础骨架，尚未实现按租户 / 团队 / 角色的细粒度授权
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
