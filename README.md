@@ -7,6 +7,7 @@
 - 当前版本定位为：`多租户请求隔离 + 共享仓库规则` 的过渡版
 - 当前目标是：稳定验证采集、抽取、审核、检索、反馈、审计与评估闭环
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id` 已用于会话、知识、提取任务、检索日志、审计和评估的请求级作用域隔离
+- `X-User-Role`、`AICODING_DEFAULT_USER_ROLE`、`AICODING_API_KEY_ROLES` 已用于 `viewer / writer / reviewer / admin` 四级权限裁剪
 - 服务启动不再隐式建表；首次运行前需要先执行数据库初始化或 Alembic 迁移
 
 ## 当前已实现
@@ -33,7 +34,7 @@
 - Docker 部署文件与 demo 脚本
 - PostgreSQL 连接配置
 - Alembic 迁移骨架
-- 向量检索抽象层、简单向量后端与可选 embedding 后端
+- 向量检索抽象层、简单向量后端、实时 embedding 后端与持久化数据库向量层
 - 可选 API Key 鉴权中间件
 - 可配置外部 LLM 验证接口与连通性验证脚本
 - GitHub Actions CI 工作流
@@ -118,6 +119,8 @@ export AICODING_EMBEDDING_BASE_URL='https://api.openai.com'
 export AICODING_EMBEDDING_API_KEY='replace-with-real-secret'
 export AICODING_EMBEDDING_MODEL='text-embedding-3-small'
 export AICODING_API_KEY='your-secret'
+export AICODING_API_KEY_ROLES='your-secret:admin,readonly-key:viewer'
+export AICODING_DEFAULT_USER_ROLE='admin'
 export AICODING_API_BASE_URL='http://127.0.0.1:8000'
 export AICODING_LLM_BASE_URL='https://api.openai.com'
 export AICODING_LLM_API_KEY='replace-with-real-secret'
@@ -158,7 +161,7 @@ export AICODING_API_KEY='replace-with-real-secret'
 python3 -m uvicorn app.main:app --reload
 ```
 
-说明：当前 `pgvector` 仍是占位后端，接口层已经抽象好，后续可直接替换为真实 `pgvector` / 外部向量数据库实现。
+说明：当前 `pgvector` / `postgres` 后端会把知识与配置规则的 embedding 持久化到数据库 `vector_index_entry` 表，并在检索时复用落库向量；如 embedding 网关不可用，会自动回退到简单关键词向量打分。
 
 ## Embedding 向量后端
 
@@ -172,7 +175,7 @@ export AICODING_EMBEDDING_MODEL='text-embedding-3-small'
 python3 -m uvicorn app.main:app --reload
 ```
 
-当前实现使用 OpenAI 兼容 `embeddings` 协议，对检索候选进行实时向量打分；如 embedding 网关异常，会自动回退到简单关键词向量打分。
+当前实现使用 OpenAI 兼容 `embeddings` 协议，对检索候选进行实时向量打分；如 embedding 网关异常，会自动回退到简单关键词向量打分。若切换到 `pgvector` / `postgres` 后端，则会额外把向量持久化到数据库索引表。
 
 ## Alembic 迁移
 
@@ -183,6 +186,7 @@ python3 -m uvicorn app.main:app --reload
 - `alembic/versions/20260324_0001_initial_schema.py`
 - `alembic/versions/20260325_0002_add_evaluation_run.py`
 - `alembic/versions/20260326_0003_add_team_scope_to_knowledge.py`
+- `alembic/versions/20260326_0004_add_vector_index_entry.py`
 
 执行迁移：
 
@@ -408,15 +412,17 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - `X-Tenant-Id`
 - `X-Team-Id`
 - `X-User-Id`
+- `X-User-Role`
 - `X-Client-Type`
 
 其中：
 
 - `X-Request-Id` 会写入响应头，并出现在大部分响应体的 `request_id`
-- `X-Tenant-Id`、`X-Team-Id`、`X-User-Id`、`X-Client-Type` 会进入会话元数据和审计日志
+- `X-Tenant-Id`、`X-Team-Id`、`X-User-Id`、`X-User-Role`、`X-Client-Type` 会进入会话元数据和审计日志
 - 当前版本已对 `sessions / knowledge / retrieval / retrieval logs / extract task / audit / evaluation` 等核心读写路径按 `tenant/team` 做作用域裁剪
 - `PUT /config/profile/{profile_id}` 与 `POST /config/profile/{profile_id}/rollback` 已对 `tenant/team` scope 做归属校验，避免跨租户覆盖团队级配置
 - 共享 `global / repo / path` 配置仍属于平台级资源，租户侧默认只读
+- 当前内置角色能力为：`viewer` 只读、`writer` 可写会话/检索/反馈、`reviewer` 可审核知识与查看信号、`admin` 可变更配置/知识与执行评估
 
 ## 配套文件
 
@@ -432,7 +438,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 ## 当前限制
 
 - 当前版本已完成会话、知识、提取任务、检索日志、审计、评估及团队级配置的请求级 `tenant/team` 隔离；但 `global / repo / path` 共享配置仍未拆成独立租户数据模型
-- `pgvector` 存储层仍是占位后端，尚未把 embedding 持久化到 PostgreSQL 向量索引
-- 权限和敏感信息控制仍是基础骨架，尚未实现按租户 / 团队 / 角色的细粒度授权
+- `pgvector` 后端已支持数据库持久化向量层，但当前仍使用跨数据库兼容的 JSON 向量存储，尚未引入 PostgreSQL 原生 `vector` 列与 ANN 索引优化
+- 已提供 `viewer / writer / reviewer / admin` 四级权限控制，但尚未接入外部 IAM、组织级角色同步和更细的资源级 ACL
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast

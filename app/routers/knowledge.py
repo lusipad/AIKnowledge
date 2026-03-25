@@ -9,6 +9,7 @@ from app.models import (
     utc_now,
 )
 from app.request_context import get_request_context
+from app.security import require_min_role
 from app.schemas import ExtractRequest, KnowledgeDeprecateRequest, KnowledgeUpdateRequest, ReviewRequest
 from app.services.audit import append_audit_log
 from app.services.isolation import apply_knowledge_scope
@@ -21,6 +22,7 @@ from app.services.use_cases import (
     get_knowledge_data,
     review_knowledge_data,
 )
+from app.services.vector_store import sync_knowledge_vector_index
 from app.utils import api_response
 
 
@@ -28,7 +30,11 @@ router = APIRouter(prefix="/api/v1", tags=["knowledge"])
 
 
 @router.post("/knowledge/extract")
-def create_extract_task(payload: ExtractRequest, database: Session = Depends(get_db)):
+def create_extract_task(
+    payload: ExtractRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('writer')),
+):
     try:
         return api_response(create_extract_task_data(payload, database))
     except ResourceNotFoundError as exc:
@@ -36,7 +42,11 @@ def create_extract_task(payload: ExtractRequest, database: Session = Depends(get
 
 
 @router.get("/knowledge/extract/{task_id}")
-def get_extract_task(task_id: str, database: Session = Depends(get_db)):
+def get_extract_task(
+    task_id: str,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
+):
     try:
         return api_response(get_extract_task_data(task_id, database, request_context=get_request_context()))
     except ResourceNotFoundError as exc:
@@ -44,7 +54,11 @@ def get_extract_task(task_id: str, database: Session = Depends(get_db)):
 
 
 @router.post("/knowledge/review")
-def review_knowledge(payload: ReviewRequest, database: Session = Depends(get_db)):
+def review_knowledge(
+    payload: ReviewRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('reviewer')),
+):
     try:
         return api_response(review_knowledge_data(payload, database))
     except ResourceNotFoundError as exc:
@@ -66,6 +80,7 @@ def list_knowledge(
     page: int = 1,
     page_size: int = 20,
     database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
 ):
     statement = apply_knowledge_scope(select(KnowledgeItem).order_by(KnowledgeItem.updated_at.desc()))
     if scope_type:
@@ -116,7 +131,11 @@ def list_knowledge(
 
 
 @router.get("/knowledge/{knowledge_id}")
-def get_knowledge(knowledge_id: str, database: Session = Depends(get_db)):
+def get_knowledge(
+    knowledge_id: str,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
+):
     try:
         return api_response(get_knowledge_data(knowledge_id, database))
     except ResourceNotFoundError as exc:
@@ -124,7 +143,12 @@ def get_knowledge(knowledge_id: str, database: Session = Depends(get_db)):
 
 
 @router.patch("/knowledge/{knowledge_id}")
-def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, database: Session = Depends(get_db)):
+def update_knowledge(
+    knowledge_id: str,
+    payload: KnowledgeUpdateRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('admin')),
+):
     request_context = get_request_context()
     knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
@@ -146,6 +170,7 @@ def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, databas
 
     if updated:
         knowledge.version += 1
+        sync_knowledge_vector_index(database, knowledge)
         append_audit_log(
             database,
             actor_id=request_context.user_id or "system",
@@ -167,7 +192,12 @@ def update_knowledge(knowledge_id: str, payload: KnowledgeUpdateRequest, databas
 
 
 @router.post("/knowledge/{knowledge_id}/deprecate")
-def deprecate_knowledge(knowledge_id: str, payload: KnowledgeDeprecateRequest, database: Session = Depends(get_db)):
+def deprecate_knowledge(
+    knowledge_id: str,
+    payload: KnowledgeDeprecateRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('admin')),
+):
     request_context = get_request_context()
     knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
@@ -176,6 +206,7 @@ def deprecate_knowledge(knowledge_id: str, payload: KnowledgeDeprecateRequest, d
     knowledge.status = "deprecated"
     knowledge.effective_to = utc_now()
     knowledge.version += 1
+    sync_knowledge_vector_index(database, knowledge)
     append_audit_log(
         database,
         actor_id=request_context.user_id or payload.actor_id,
@@ -197,7 +228,11 @@ def deprecate_knowledge(knowledge_id: str, payload: KnowledgeDeprecateRequest, d
 
 
 @router.get("/knowledge/{knowledge_id}/reviews")
-def list_knowledge_reviews(knowledge_id: str, database: Session = Depends(get_db)):
+def list_knowledge_reviews(
+    knowledge_id: str,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
+):
     knowledge = database.scalar(apply_knowledge_scope(select(KnowledgeItem).where(KnowledgeItem.knowledge_id == knowledge_id)))
     if not knowledge:
         raise HTTPException(status_code=404, detail="knowledge not found")

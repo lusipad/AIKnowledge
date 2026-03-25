@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import KnowledgeSignal
+from app.security import require_min_role
 from app.schemas import ContextEventsRequest
 from app.services.use_cases import ResourceNotFoundError, append_context_events_data
 from app.utils import api_response
@@ -13,7 +14,11 @@ router = APIRouter(prefix="/api/v1", tags=["context"])
 
 
 @router.post("/context/events")
-def append_context_events(payload: ContextEventsRequest, database: Session = Depends(get_db)):
+def append_context_events(
+    payload: ContextEventsRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('writer')),
+):
     try:
         return api_response(append_context_events_data(payload, database))
     except ResourceNotFoundError as exc:
@@ -21,7 +26,11 @@ def append_context_events(payload: ContextEventsRequest, database: Session = Dep
 
 
 @router.get("/signals")
-def list_signals(status: str | None = None, database: Session = Depends(get_db)):
+def list_signals(
+    status: str | None = None,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('reviewer')),
+):
     statement = select(KnowledgeSignal).order_by(KnowledgeSignal.created_at.desc())
     if status:
         statement = statement.where(KnowledgeSignal.status == status)

@@ -4,6 +4,7 @@ const defaultScenario = {
   tenantId: 'tenant-demo',
   teamId: 'risk-platform',
   userId: 'ops-owner',
+  userRole: 'admin',
   clientType: 'console',
   repoId: 'demo-repo',
   branchName: 'feature/order-risk-hardening',
@@ -41,6 +42,7 @@ const elements = {
   tenantInput: document.querySelector('#tenantInput'),
   teamInput: document.querySelector('#teamInput'),
   userInput: document.querySelector('#userInput'),
+  roleInput: document.querySelector('#roleInput'),
   clientTypeInput: document.querySelector('#clientTypeInput'),
   repoIdInput: document.querySelector('#repoIdInput'),
   branchInput: document.querySelector('#branchInput'),
@@ -104,6 +106,7 @@ function getConfig() {
     tenantId: elements.tenantInput.value.trim(),
     teamId: elements.teamInput.value.trim(),
     userId: elements.userInput.value.trim(),
+    userRole: elements.roleInput.value.trim().toLowerCase() || 'admin',
     clientType: elements.clientTypeInput.value.trim() || 'console',
   };
 }
@@ -132,6 +135,7 @@ function applyPreset(preset) {
   elements.tenantInput.value = preset.tenantId || defaultScenario.tenantId;
   elements.teamInput.value = preset.teamId || defaultScenario.teamId;
   elements.userInput.value = preset.userId || defaultScenario.userId;
+  elements.roleInput.value = preset.userRole || defaultScenario.userRole;
   elements.clientTypeInput.value = preset.clientType || defaultScenario.clientType;
   elements.repoIdInput.value = preset.repoId || defaultScenario.repoId;
   elements.branchInput.value = preset.branchName || defaultScenario.branchName;
@@ -241,6 +245,9 @@ async function request(method, path, payload) {
   }
   if (config.userId) {
     headers['X-User-Id'] = config.userId;
+  }
+  if (config.userRole) {
+    headers['X-User-Role'] = config.userRole;
   }
 
   const response = await fetch(`${config.baseUrl}${path}`, {

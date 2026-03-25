@@ -47,9 +47,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-if settings.api_key_enabled:
-    app.add_middleware(ApiKeyMiddleware, api_keys=settings.configured_api_keys)
 app.add_middleware(RequestContextMiddleware)
+if settings.api_key_enabled:
+    app.add_middleware(
+        ApiKeyMiddleware,
+        api_keys=settings.configured_api_keys,
+        api_key_roles=settings.api_key_roles,
+    )
 
 app.include_router(sessions_router)
 app.include_router(context_router)

@@ -25,6 +25,7 @@ class AiKnowledgeClient:
     tenant_id: str | None = None
     team_id: str | None = None
     user_id: str | None = None
+    user_role: str | None = None
     client_type: str = 'cli'
     timeout_sec: int = 30
 
@@ -43,6 +44,8 @@ class AiKnowledgeClient:
             headers['X-Team-Id'] = self.team_id
         if self.user_id:
             headers['X-User-Id'] = self.user_id
+        if self.user_role:
+            headers['X-User-Role'] = self.user_role
         return headers
 
     def request(
@@ -138,6 +141,7 @@ def build_client_from_env() -> AiKnowledgeClient:
         tenant_id=os.getenv('AICODING_TENANT_ID') or None,
         team_id=os.getenv('AICODING_TEAM_ID') or None,
         user_id=os.getenv('AICODING_USER_ID') or None,
+        user_role=os.getenv('AICODING_USER_ROLE') or None,
         client_type=os.getenv('AICODING_CLIENT_TYPE', 'cli'),
         timeout_sec=timeout_sec,
     )

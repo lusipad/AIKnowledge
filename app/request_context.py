@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from app.settings import load_settings
+
 
 @dataclass(frozen=True)
 class RequestContext:
@@ -15,6 +17,7 @@ class RequestContext:
     team_id: str | None = None
     user_id: str | None = None
     client_type: str | None = None
+    user_role: str | None = None
 
 
 _request_context_var: ContextVar[RequestContext] = ContextVar(
@@ -24,12 +27,16 @@ _request_context_var: ContextVar[RequestContext] = ContextVar(
 
 
 def _build_request_context(request: Request) -> RequestContext:
+    settings = load_settings()
     return RequestContext(
         request_id=request.headers.get('X-Request-Id') or f'req_{uuid.uuid4().hex[:12]}',
         tenant_id=request.headers.get('X-Tenant-Id') or None,
         team_id=request.headers.get('X-Team-Id') or None,
         user_id=request.headers.get('X-User-Id') or None,
         client_type=request.headers.get('X-Client-Type') or None,
+        user_role=getattr(request.state, 'authenticated_role', None)
+        or (request.headers.get('X-User-Role') or '').strip().lower()
+        or settings.default_user_role,
     )
 
 

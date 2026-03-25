@@ -22,6 +22,8 @@ def append_audit_log(
     payload_detail.setdefault('request_id', request_context.request_id)
     if request_context.client_type:
         payload_detail.setdefault('client_type', request_context.client_type)
+    if request_context.user_role:
+        payload_detail.setdefault('user_role', request_context.user_role)
     if request_context.tenant_id:
         payload_detail.setdefault('tenant_id', request_context.tenant_id)
     if request_context.team_id:

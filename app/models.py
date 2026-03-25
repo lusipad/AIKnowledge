@@ -173,6 +173,26 @@ class RetrievalResult(Base):
     selected_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class VectorIndexEntry(Base):
+    __tablename__ = "vector_index_entry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[str] = mapped_column(String(160), nullable=False, unique=True, index=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    entity_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    scope_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    scope_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    embedding_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_text: Mapped[str] = mapped_column(Text, nullable=False)
+    vector: Mapped[list[float]] = mapped_column(JSON, default=list, nullable=False)
+    document_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class KnowledgeFeedback(Base):
     __tablename__ = "knowledge_feedback"
 

@@ -51,6 +51,7 @@ from app.services.retrieval import (
 from app.services.signals import build_signal_from_event
 from app.settings import load_settings
 from app.utils import generate_id
+from app.services.vector_store import sync_config_vector_index, sync_knowledge_vector_index
 
 
 class ResourceNotFoundError(ValueError):
@@ -303,6 +304,7 @@ def upsert_profile_data(
     request_context: RequestContext | None = None,
 ) -> dict:
     current_context = _resolve_request_context(request_context)
+    settings = load_settings()
     _assert_profile_scope_writable(
         scope_type=payload.scope_type,
         scope_id=payload.scope_id,
@@ -338,7 +340,9 @@ def upsert_profile_data(
         )
         database.add(profile)
 
+    database.flush()
     _record_profile_version(database, profile)
+    sync_config_vector_index(database, profile, settings=settings)
     append_audit_log(
         database,
         actor_id=current_context.user_id or 'system',
@@ -715,6 +719,7 @@ def review_knowledge_data(payload: ReviewRequest, database: Session) -> dict:
         raise InvalidOperationError('unsupported decision')
 
     knowledge.status = next_status
+    sync_knowledge_vector_index(database, knowledge)
     database.add(
         KnowledgeReview(
             knowledge_id=payload.knowledge_id,
@@ -776,6 +781,7 @@ def build_context_pack_data(
         payload.query,
         payload.repo_id,
         payload.file_paths,
+        database=database,
     )
     selected_profile_rules = select_config_rules(ranked_profile_rules)
 
@@ -787,7 +793,13 @@ def build_context_pack_data(
         if scope_matches(item.scope_type, item.scope_id, payload.repo_id, payload.file_paths)
     ]
 
-    ranked_items, vector_backend_name = rank_knowledge_items(candidate_items, payload.query, payload.repo_id, payload.file_paths)
+    ranked_items, vector_backend_name = rank_knowledge_items(
+        candidate_items,
+        payload.query,
+        payload.repo_id,
+        payload.file_paths,
+        database=database,
+    )
     selected_items = ranked_items[:8]
 
     if persist:

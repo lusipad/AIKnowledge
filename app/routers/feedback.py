@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
+from app.security import require_min_role
 from app.schemas import ContextPackFeedbackRequest, FeedbackRequest
 from app.services.use_cases import (
     ResourceNotFoundError,
@@ -15,7 +16,11 @@ router = APIRouter(prefix="/api/v1", tags=["feedback"])
 
 
 @router.post("/feedback/knowledge")
-def submit_knowledge_feedback(payload: FeedbackRequest, database: Session = Depends(get_db)):
+def submit_knowledge_feedback(
+    payload: FeedbackRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('writer')),
+):
     try:
         return api_response(submit_knowledge_feedback_data(payload, database))
     except ResourceNotFoundError as exc:
@@ -23,7 +28,11 @@ def submit_knowledge_feedback(payload: FeedbackRequest, database: Session = Depe
 
 
 @router.post("/feedback/context-pack")
-def submit_context_pack_feedback(payload: ContextPackFeedbackRequest, database: Session = Depends(get_db)):
+def submit_context_pack_feedback(
+    payload: ContextPackFeedbackRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('writer')),
+):
     try:
         return api_response(submit_context_pack_feedback_data(payload, database))
     except ResourceNotFoundError as exc:

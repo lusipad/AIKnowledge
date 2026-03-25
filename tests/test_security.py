@@ -3,7 +3,7 @@ import unittest
 
 from starlette.requests import Request
 
-from app.security import extract_api_key, is_exempt_path
+from app.security import extract_api_key, is_exempt_path, resolve_request_role
 from app.settings import load_settings
 
 
@@ -60,6 +60,30 @@ class SecurityTestCase(unittest.TestCase):
             else:
                 os.environ['AICODING_API_KEYS'] = previous_api_keys
         self.assertEqual(settings.configured_api_keys, ('alpha', 'beta', 'gamma'))
+
+    def test_load_settings_supports_api_key_role_mapping(self):
+        previous_role_mapping = os.environ.get('AICODING_API_KEY_ROLES')
+        os.environ['AICODING_API_KEY_ROLES'] = 'alpha:viewer,beta:writer,gamma:admin'
+        try:
+            settings = load_settings()
+        finally:
+            if previous_role_mapping is None:
+                os.environ.pop('AICODING_API_KEY_ROLES', None)
+            else:
+                os.environ['AICODING_API_KEY_ROLES'] = previous_role_mapping
+        self.assertEqual(settings.api_key_roles, {'alpha': 'viewer', 'beta': 'writer', 'gamma': 'admin'})
+
+    def test_resolve_request_role_prefers_authenticated_role(self):
+        request = Request(
+            {
+                'type': 'http',
+                'headers': [(b'x-user-role', b'admin')],
+                'method': 'GET',
+                'path': '/api/v1/sessions',
+            }
+        )
+        request.state.authenticated_role = 'viewer'
+        self.assertEqual(resolve_request_role(request, default_role='writer'), 'viewer')
 
 
 if __name__ == '__main__':

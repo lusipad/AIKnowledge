@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_db
 from app.models import ContextPackFeedback, KnowledgeFeedback, RetrievalRequest, RetrievalResult
 from app.request_context import get_request_context
+from app.security import require_min_role
 from app.schemas import RetrievalQueryRequest
 from app.services.isolation import apply_retrieval_request_scope
 from app.services.use_cases import (
@@ -18,7 +19,11 @@ from app.utils import api_response
 router = APIRouter(prefix='/api/v1', tags=['retrieval'])
 
 @router.post('/retrieval/query')
-def retrieve_context_pack(payload: RetrievalQueryRequest, database: Session = Depends(get_db)):
+def retrieve_context_pack(
+    payload: RetrievalQueryRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('writer')),
+):
     try:
         context_pack, request_id = retrieve_context_pack_data(payload, database)
     except ResourceNotFoundError as exc:
@@ -27,7 +32,11 @@ def retrieve_context_pack(payload: RetrievalQueryRequest, database: Session = De
 
 
 @router.post('/retrieval/debug')
-def debug_retrieval(payload: RetrievalQueryRequest, database: Session = Depends(get_db)):
+def debug_retrieval(
+    payload: RetrievalQueryRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('writer')),
+):
     try:
         context_pack, debug_payload, _ = build_context_pack_data(
             database,
@@ -47,6 +56,7 @@ def list_retrieval_logs(
     query_type: str | None = None,
     limit: int | None = None,
     database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
 ):
     statement = apply_retrieval_request_scope(select(RetrievalRequest).order_by(RetrievalRequest.requested_at.desc()))
     if session_id:
@@ -113,7 +123,11 @@ def list_retrieval_logs(
 
 
 @router.get('/retrieval/logs/{request_id}')
-def get_retrieval_log(request_id: str, database: Session = Depends(get_db)):
+def get_retrieval_log(
+    request_id: str,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
+):
     log = database.scalar(apply_retrieval_request_scope(select(RetrievalRequest).where(RetrievalRequest.request_id == request_id)))
     if not log:
         raise HTTPException(status_code=404, detail='retrieval log not found')

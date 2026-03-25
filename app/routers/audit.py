@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import AuditLog
+from app.security import require_min_role
 from app.services.isolation import apply_audit_scope
 from app.utils import api_response
 
@@ -17,6 +18,7 @@ def list_audit_logs(
     resource_type: str | None = None,
     limit: int = 100,
     database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
 ):
     statement = apply_audit_scope(select(AuditLog).order_by(AuditLog.created_at.desc()))
     if action:

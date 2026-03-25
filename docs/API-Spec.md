@@ -14,7 +14,7 @@ API 设计目标：
 - 保持资源语义清晰。
 - 兼容同步请求与异步任务。
 - 为检索、抽取、审核、反馈提供统一接口。
-- 目标架构支持多租户与多范围权限控制；当前实现已对 `sessions / knowledge / retrieval / extract task / audit / evaluation` 等核心路径按 `tenant/team` 做作用域裁剪，但尚未实现完整角色授权与平台级共享资源治理。
+- 目标架构支持多租户与多范围权限控制；当前实现已对 `sessions / knowledge / retrieval / extract task / audit / evaluation` 等核心路径按 `tenant/team` 做作用域裁剪，并提供 `viewer / writer / reviewer / admin` 四级角色授权；平台级共享资源治理仍保留进一步细化空间。
 
 ## 2. 通用约定
 
@@ -25,11 +25,13 @@ API 设计目标：
 ### 2.2 认证
 
 - 推荐：`Authorization: Bearer <token>`
+- 可选：通过 `AICODING_API_KEY_ROLES` 为 API Key 绑定角色，或由客户端显式传递 `X-User-Role`
 
 ### 2.3 公共请求头
 
 - `X-Tenant-Id`
 - `X-Team-Id`
+- `X-User-Role`
 - `X-Client-Type`
 - `X-Request-Id`
 
@@ -53,6 +55,13 @@ API 设计目标：
 - `409100`：状态冲突
 - `429100`：请求过载
 - `500100`：内部错误
+
+### 2.6 角色建议
+
+- `viewer`：只读查询
+- `writer`：会话、事件、检索、反馈
+- `reviewer`：包含 `writer`，并可审核知识、查看信号
+- `admin`：包含 `reviewer`，并可修改知识、配置与执行评估
 
 ## 3. 会话与上下文接口
 

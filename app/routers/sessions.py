@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models import ConversationSession, KnowledgeSignal, SessionEvent
+from app.security import require_min_role
 from app.schemas import SessionCreateRequest
 from app.services.isolation import apply_session_scope
 from app.services.use_cases import create_session_data
@@ -14,7 +15,11 @@ router = APIRouter(prefix="/api/v1", tags=["sessions"])
 
 
 @router.post("/sessions")
-def create_session(payload: SessionCreateRequest, database: Session = Depends(get_db)):
+def create_session(
+    payload: SessionCreateRequest,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('writer')),
+):
     return api_response(create_session_data(payload, database))
 
 
@@ -27,6 +32,7 @@ def list_sessions(
     page: int = 1,
     page_size: int = 20,
     database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
 ):
     normalized_page = max(1, page)
     normalized_page_size = max(1, min(page_size, 100))
@@ -103,7 +109,11 @@ def list_sessions(
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: str, database: Session = Depends(get_db)):
+def get_session(
+    session_id: str,
+    database: Session = Depends(get_db),
+    _: str = Depends(require_min_role('viewer')),
+):
     session = database.scalar(apply_session_scope(select(ConversationSession).where(ConversationSession.session_id == session_id)))
     if not session:
         raise HTTPException(status_code=404, detail="session not found")

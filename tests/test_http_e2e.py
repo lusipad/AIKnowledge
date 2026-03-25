@@ -249,6 +249,39 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         )
         self.assertEqual(team_profile_response.status_code, 200)
 
+        viewer_headers = dict(request_headers)
+        viewer_headers['X-User-Role'] = 'viewer'
+        viewer_knowledge = self.client.get(f'/api/v1/knowledge/{knowledge_id}', headers=viewer_headers)
+        self.assertEqual(viewer_knowledge.status_code, 200)
+
+        viewer_profile_write = self.client.put(
+            '/api/v1/config/profile/cfg_viewer_blocked',
+            json={
+                'scope_type': 'team',
+                'scope_id': 'team:tenant-demo:team-demo',
+                'profile_type': 'prompt',
+                'content': {'instructions': ['viewer should not write config']},
+                'version': 1,
+                'status': 'active',
+            },
+            headers=viewer_headers,
+        )
+        self.assertEqual(viewer_profile_write.status_code, 403)
+
+        viewer_knowledge_update = self.client.patch(
+            f'/api/v1/knowledge/{knowledge_id}',
+            json={'title': 'viewer should not update'},
+            headers=viewer_headers,
+        )
+        self.assertEqual(viewer_knowledge_update.status_code, 403)
+
+        viewer_evaluation_run = self.client.post(
+            '/api/v1/evaluation/run',
+            json={'scenario_id': 'order_risk_regression_zh', 'verify_llm': False, 'persist': False},
+            headers=viewer_headers,
+        )
+        self.assertEqual(viewer_evaluation_run.status_code, 403)
+
         same_tenant_other_team_headers = {
             'X-Request-Id': 'req_http_e2e_003',
             'X-Tenant-Id': 'tenant-demo',

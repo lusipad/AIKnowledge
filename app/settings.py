@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 ALLOWED_VECTOR_BACKENDS = {'simple', 'keyword', 'simple-keyword', 'embedding', 'pgvector', 'postgres'}
 ALLOWED_EXTRACTION_MODES = {'sync', 'async'}
+ALLOWED_USER_ROLES = {'viewer', 'writer', 'reviewer', 'admin'}
 
 
 def _normalize_llm_chat_path(path: str | None) -> str:
@@ -33,6 +34,8 @@ class AppSettings:
     llm_model: str | None
     llm_chat_path: str
     llm_timeout_sec: int
+    default_user_role: str = 'admin'
+    api_key_roles: dict[str, str] = field(default_factory=dict)
 
     @property
     def api_key_enabled(self) -> bool:
@@ -54,6 +57,22 @@ class AppSettings:
         return bool(self.embedding_base_url and self.embedding_api_key and self.embedding_model)
 
 
+def _parse_api_key_roles(raw_value: str | None) -> dict[str, str]:
+    if not raw_value:
+        return {}
+    mappings: dict[str, str] = {}
+    for item in raw_value.split(','):
+        if ':' not in item:
+            continue
+        key, role = item.split(':', 1)
+        normalized_key = key.strip()
+        normalized_role = role.strip().lower()
+        if not normalized_key or normalized_role not in ALLOWED_USER_ROLES:
+            continue
+        mappings[normalized_key] = normalized_role
+    return mappings
+
+
 
 def load_settings() -> AppSettings:
     vector_backend = os.getenv('AICODING_VECTOR_BACKEND', 'simple').lower()
@@ -63,6 +82,10 @@ def load_settings() -> AppSettings:
     if extraction_mode not in ALLOWED_EXTRACTION_MODES:
         raise ValueError(f'Unsupported extraction mode: {extraction_mode}')
 
+    default_user_role = os.getenv('AICODING_DEFAULT_USER_ROLE', 'admin').lower()
+    if default_user_role not in ALLOWED_USER_ROLES:
+        raise ValueError(f'Unsupported default user role: {default_user_role}')
+
     return AppSettings(
         app_name='AI Coding Knowledge & Memory MVP',
         app_version='0.7.0',
@@ -70,6 +93,8 @@ def load_settings() -> AppSettings:
         vector_backend=vector_backend,
         extraction_mode=extraction_mode,
         api_key=(os.getenv('AICODING_API_KEYS') or os.getenv('AICODING_API_KEY') or '').strip() or None,
+        default_user_role=default_user_role,
+        api_key_roles=_parse_api_key_roles(os.getenv('AICODING_API_KEY_ROLES')),
         env=os.getenv('AICODING_ENV', 'dev'),
         embedding_base_url=(os.getenv('AICODING_EMBEDDING_BASE_URL') or '').rstrip('/') or None,
         embedding_api_key=os.getenv('AICODING_EMBEDDING_API_KEY') or None,
