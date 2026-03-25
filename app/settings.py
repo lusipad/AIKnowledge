@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 
 
-ALLOWED_VECTOR_BACKENDS = {'simple', 'keyword', 'simple-keyword', 'pgvector', 'postgres'}
+ALLOWED_VECTOR_BACKENDS = {'simple', 'keyword', 'simple-keyword', 'embedding', 'pgvector', 'postgres'}
 ALLOWED_EXTRACTION_MODES = {'sync', 'async'}
 
 
@@ -23,6 +23,11 @@ class AppSettings:
     extraction_mode: str
     api_key: str | None
     env: str
+    embedding_base_url: str | None
+    embedding_api_key: str | None
+    embedding_model: str | None
+    embedding_path: str
+    embedding_timeout_sec: int
     llm_base_url: str | None
     llm_api_key: str | None
     llm_model: str | None
@@ -34,8 +39,19 @@ class AppSettings:
         return bool(self.api_key)
 
     @property
+    def configured_api_keys(self) -> tuple[str, ...]:
+        if not self.api_key:
+            return ()
+        keys = [item.strip() for item in self.api_key.split(',')]
+        return tuple(dict.fromkeys([item for item in keys if item]))
+
+    @property
     def llm_configured(self) -> bool:
         return bool(self.llm_base_url and self.llm_api_key and self.llm_model)
+
+    @property
+    def embedding_configured(self) -> bool:
+        return bool(self.embedding_base_url and self.embedding_api_key and self.embedding_model)
 
 
 
@@ -53,8 +69,13 @@ def load_settings() -> AppSettings:
         db_url=os.getenv('AICODING_DB_URL', 'sqlite:///./aicoding_mvp.db'),
         vector_backend=vector_backend,
         extraction_mode=extraction_mode,
-        api_key=os.getenv('AICODING_API_KEY') or None,
+        api_key=(os.getenv('AICODING_API_KEYS') or os.getenv('AICODING_API_KEY') or '').strip() or None,
         env=os.getenv('AICODING_ENV', 'dev'),
+        embedding_base_url=(os.getenv('AICODING_EMBEDDING_BASE_URL') or '').rstrip('/') or None,
+        embedding_api_key=os.getenv('AICODING_EMBEDDING_API_KEY') or None,
+        embedding_model=os.getenv('AICODING_EMBEDDING_MODEL') or None,
+        embedding_path=_normalize_llm_chat_path(os.getenv('AICODING_EMBEDDING_PATH')).replace('/chat/completions', '/embeddings'),
+        embedding_timeout_sec=max(1, int(os.getenv('AICODING_EMBEDDING_TIMEOUT_SEC', '30'))),
         llm_base_url=(os.getenv('AICODING_LLM_BASE_URL') or '').rstrip('/') or None,
         llm_api_key=os.getenv('AICODING_LLM_API_KEY') or None,
         llm_model=os.getenv('AICODING_LLM_MODEL') or None,

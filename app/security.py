@@ -45,16 +45,16 @@ def extract_api_key(request: Request) -> str | None:
 
 
 class ApiKeyMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, api_key: str):
+    def __init__(self, app, api_keys: tuple[str, ...] | list[str] | set[str]):
         super().__init__(app)
-        self.api_key = api_key
+        self.api_keys = {key for key in api_keys if key}
 
     async def dispatch(self, request: Request, call_next):
         if is_exempt_path(request.url.path):
             return await call_next(request)
 
         provided_key = extract_api_key(request)
-        if not provided_key or provided_key != self.api_key:
+        if not provided_key or provided_key not in self.api_keys:
             return JSONResponse(
                 status_code=401,
                 content={'code': 401100, 'message': 'unauthorized', 'data': {}},

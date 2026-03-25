@@ -1,3 +1,4 @@
+import os
 import unittest
 
 from starlette.requests import Request
@@ -40,8 +41,25 @@ class SecurityTestCase(unittest.TestCase):
 
     def test_load_settings_defaults(self):
         settings = load_settings()
-        self.assertIn(settings.vector_backend, {'simple', 'keyword', 'simple-keyword', 'pgvector', 'postgres'})
+        self.assertIn(settings.vector_backend, {'simple', 'keyword', 'simple-keyword', 'embedding', 'pgvector', 'postgres'})
         self.assertIn(settings.extraction_mode, {'sync', 'async'})
+
+    def test_load_settings_supports_multiple_api_keys(self):
+        previous_api_key = os.environ.get('AICODING_API_KEY')
+        previous_api_keys = os.environ.get('AICODING_API_KEYS')
+        os.environ['AICODING_API_KEYS'] = 'alpha, beta ,gamma'
+        try:
+            settings = load_settings()
+        finally:
+            if previous_api_key is None:
+                os.environ.pop('AICODING_API_KEY', None)
+            else:
+                os.environ['AICODING_API_KEY'] = previous_api_key
+            if previous_api_keys is None:
+                os.environ.pop('AICODING_API_KEYS', None)
+            else:
+                os.environ['AICODING_API_KEYS'] = previous_api_keys
+        self.assertEqual(settings.configured_api_keys, ('alpha', 'beta', 'gamma'))
 
 
 if __name__ == '__main__':

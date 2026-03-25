@@ -48,7 +48,7 @@ app = FastAPI(
 )
 
 if settings.api_key_enabled:
-    app.add_middleware(ApiKeyMiddleware, api_key=settings.api_key)
+    app.add_middleware(ApiKeyMiddleware, api_keys=settings.configured_api_keys)
 app.add_middleware(RequestContextMiddleware)
 
 app.include_router(sessions_router)

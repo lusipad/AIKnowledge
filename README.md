@@ -33,7 +33,7 @@
 - Docker 部署文件与 demo 脚本
 - PostgreSQL 连接配置
 - Alembic 迁移骨架
-- 向量检索抽象层与简单向量后端
+- 向量检索抽象层、简单向量后端与可选 embedding 后端
 - 可选 API Key 鉴权中间件
 - 可配置外部 LLM 验证接口与连通性验证脚本
 - GitHub Actions CI 工作流
@@ -113,6 +113,9 @@ make init-db
 export AICODING_DB_URL='sqlite:///./runtime/dev.db'
 export AICODING_VECTOR_BACKEND='simple'
 export AICODING_EXTRACTION_MODE='sync'
+export AICODING_EMBEDDING_BASE_URL='https://api.openai.com'
+export AICODING_EMBEDDING_API_KEY='replace-with-real-secret'
+export AICODING_EMBEDDING_MODEL='text-embedding-3-small'
 export AICODING_API_KEY='your-secret'
 export AICODING_API_BASE_URL='http://127.0.0.1:8000'
 export AICODING_LLM_BASE_URL='https://api.openai.com'
@@ -132,6 +135,8 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 ```
 
 启用 `AICODING_API_KEY` 后，除 `/`、`/healthz`、`/docs`、`/openapi.json` 外，其余接口都需要：
+
+也可使用 `AICODING_API_KEYS='key-a,key-b,key-c'` 配置多个可接受的 API Key。
 
 以下路径仍保持免鉴权，便于探针和 console 使用：
 
@@ -153,6 +158,20 @@ python3 -m uvicorn app.main:app --reload
 ```
 
 说明：当前 `pgvector` 仍是占位后端，接口层已经抽象好，后续可直接替换为真实 `pgvector` / 外部向量数据库实现。
+
+## Embedding 向量后端
+
+如需启用真实 embedding 检索，可配置：
+
+```bash
+export AICODING_VECTOR_BACKEND='embedding'
+export AICODING_EMBEDDING_BASE_URL='https://api.openai.com'
+export AICODING_EMBEDDING_API_KEY='replace-with-real-secret'
+export AICODING_EMBEDDING_MODEL='text-embedding-3-small'
+python3 -m uvicorn app.main:app --reload
+```
+
+当前实现使用 OpenAI 兼容 `embeddings` 协议，对检索候选进行实时向量打分；如 embedding 网关异常，会自动回退到简单关键词向量打分。
 
 ## Alembic 迁移
 
@@ -409,7 +428,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 ## 当前限制
 
 - 当前版本默认服务于 `单团队 / 单仓库` 试点场景，尚未实现真实多租户隔离与跨团队权限裁剪
-- 向量检索目前是简单关键词向量后端，不是真实 embedding / pgvector 检索
-- 权限和敏感信息控制仍是基础骨架，当前仅支持单一 API Key
+- `pgvector` 存储层仍是占位后端，尚未把 embedding 持久化到 PostgreSQL 向量索引
+- 权限和敏感信息控制仍是基础骨架，尚未实现按租户 / 团队 / 角色的细粒度授权
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast
