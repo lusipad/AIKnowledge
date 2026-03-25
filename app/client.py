@@ -107,6 +107,18 @@ class AiKnowledgeClient:
     def get_knowledge(self, knowledge_id: str) -> dict[str, Any]:
         return self.request('GET', f'/api/v1/knowledge/{knowledge_id}')
 
+    def list_evaluation_scenarios(self) -> dict[str, Any]:
+        return self.request('GET', '/api/v1/evaluation/scenarios')
+
+    def run_evaluation(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.request('POST', '/api/v1/evaluation/run', payload=payload)
+
+    def list_evaluation_runs(self, **query: Any) -> dict[str, Any]:
+        return self.request('GET', '/api/v1/evaluation/runs', query=query)
+
+    def get_evaluation_run(self, run_id: str) -> dict[str, Any]:
+        return self.request('GET', f'/api/v1/evaluation/runs/{run_id}')
+
 
 def build_client_from_env() -> AiKnowledgeClient:
     base_url = os.getenv('AICODING_API_BASE_URL', 'http://127.0.0.1:8000')

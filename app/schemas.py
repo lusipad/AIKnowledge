@@ -99,3 +99,18 @@ class ConfigRollbackRequest(BaseModel):
 class LlmVerifyRequest(BaseModel):
     prompt: str = "Reply with ok only."
     max_tokens: int = 32
+
+
+class EvaluationRunRequest(BaseModel):
+    scenario_id: str = "order_risk_regression_zh"
+    mode: str = "full"
+    verify_llm: bool = True
+    persist: bool = True
+    repo_id: str | None = None
+    branch_name: str | None = None
+    task_id: str | None = None
+    file_path: str | None = None
+    profile_instruction: str | None = None
+    event_prompt_summary: str | None = None
+    event_result_summary: str | None = None
+    query: str | None = None

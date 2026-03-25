@@ -23,6 +23,7 @@ const state = {
   knowledgeId: '',
   retrievalRequestId: '',
   profileId: '',
+  evaluationRunId: '',
   workflow: {
     profile: false,
     session: false,
@@ -68,10 +69,15 @@ const elements = {
   retrieveButton: document.querySelector('#retrieveButton'),
   feedbackButton: document.querySelector('#feedbackButton'),
   auditButton: document.querySelector('#auditButton'),
+  runEvaluationButton: document.querySelector('#runEvaluationButton'),
   workflowBadge: document.querySelector('#workflowBadge'),
   knowledgeStatusTag: document.querySelector('#knowledgeStatusTag'),
   retrievalStatusTag: document.querySelector('#retrievalStatusTag'),
   responseTag: document.querySelector('#responseTag'),
+  evaluationScore: document.querySelector('#evaluationScore'),
+  evaluationStatusText: document.querySelector('#evaluationStatusText'),
+  evaluationSummary: document.querySelector('#evaluationSummary'),
+  evaluationJson: document.querySelector('#evaluationJson'),
   knowledgeSummary: document.querySelector('#knowledgeSummary'),
   retrievalSummary: document.querySelector('#retrievalSummary'),
   auditSummary: document.querySelector('#auditSummary'),
@@ -445,6 +451,51 @@ async function loadAuditLogs() {
   return payload;
 }
 
+function summarizeEvaluation(payload) {
+  state.evaluationRunId = payload.data.run_id;
+  const categories = payload.data.categories || [];
+  elements.evaluationScore.textContent = `${payload.data.score}`;
+  elements.evaluationStatusText.textContent = `${payload.data.status} · ${payload.data.summary}`;
+  elements.evaluationSummary.textContent = [
+    `关键失败项：${(payload.data.failed_critical_checks || []).join(', ') || '无'}`,
+    `通过检查：${payload.data.passed_checks}/${payload.data.total_checks}`,
+    `总耗时：${payload.data.durations?.total_ms || 0}ms`,
+    `分类得分：${categories.map((item) => `${item.category} ${item.score}/${item.max_score}`).join(' | ') || '无'}`,
+  ].join('\n');
+  renderJson(elements.evaluationJson, payload);
+}
+
+async function loadLatestEvaluation() {
+  const payload = await request('GET', '/api/v1/evaluation/runs?limit=1');
+  const latest = payload.data.items?.[0];
+  if (!latest) {
+    return null;
+  }
+  summarizeEvaluation({ data: latest });
+  return latest;
+}
+
+async function runEvaluation() {
+  const scenario = getScenario();
+  const payload = await request('POST', '/api/v1/evaluation/run', {
+    scenario_id: 'order_risk_regression_zh',
+    mode: 'full',
+    verify_llm: true,
+    persist: true,
+    repo_id: scenario.repoId,
+    branch_name: scenario.branchName,
+    task_id: scenario.taskId,
+    file_path: scenario.path,
+    profile_instruction: scenario.profileInstruction,
+    event_prompt_summary: scenario.eventOne,
+    event_result_summary: scenario.eventTwo,
+    query: scenario.query,
+  });
+  summarizeEvaluation(payload);
+  appendLog('success', `系统评估完成，得分 ${payload.data.score}，状态 ${payload.data.status}。`);
+  return payload;
+}
+
 async function submitFeedbackAndAudit() {
   if (!state.knowledgeId || !state.retrievalRequestId) {
     throw new Error('请先完成知识抽取与检索。');
@@ -557,6 +608,9 @@ function wireEvents() {
   elements.auditButton.addEventListener('click', () =>
     withTask(elements.auditButton, '处理中...', loadAuditLogs),
   );
+  elements.runEvaluationButton.addEventListener('click', () =>
+    withTask(elements.runEvaluationButton, '评估中...', runEvaluation),
+  );
   elements.runDemoButton.addEventListener('click', () =>
     withTask(elements.runDemoButton, '执行中...', runDemo),
   );
@@ -570,6 +624,7 @@ async function bootstrap() {
   resetWorkflow();
   try {
     await loadHealth();
+    await loadLatestEvaluation();
   } catch (error) {
     appendLog('error', `初始化健康检查失败：${error.message}`);
   }

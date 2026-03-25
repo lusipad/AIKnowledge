@@ -9,6 +9,7 @@ from app.request_context import RequestContextMiddleware
 from app.routers.audit import router as audit_router
 from app.routers.config import router as config_router
 from app.routers.context import router as context_router
+from app.routers.evaluation import router as evaluation_router
 from app.routers.feedback import router as feedback_router
 from app.routers.knowledge import router as knowledge_router
 from app.routers.llm import router as llm_router
@@ -54,6 +55,7 @@ app.include_router(retrieval_router)
 app.include_router(config_router)
 app.include_router(feedback_router)
 app.include_router(audit_router)
+app.include_router(evaluation_router)
 app.include_router(ui_router)
 app.mount('/static', StaticFiles(directory=STATIC_ROOT), name='static')
 

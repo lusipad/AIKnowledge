@@ -16,6 +16,7 @@
 - 审计日志查询
 - 本地 HTTP 客户端与 demo 链路
 - 浏览器控制台与一键真实场景演示
+- 内建评估框架、可视化自评面板与历史评估记录
 - 自动化端到端测试
 - Docker 部署文件与 demo 脚本
 - PostgreSQL 连接配置
@@ -51,8 +52,11 @@
 - `scripts/demo_flow.py`：本地演示脚本
 - `scripts/http_client.py`：HTTP 客户端命令行
 - `scripts/verify_llm.py`：LLM 验证脚本
+- `scripts/evaluate_system.py`：通过 HTTP 触发系统评估并输出 Markdown / JSON 报告
 - `app/static/console/`：浏览器控制台静态前端
 - `app/routers/ui.py`：控制台路由与 favicon
+- `app/routers/evaluation.py`：评估接口
+- `app/services/evaluation.py`：评估执行器、打分规则、评估历史
 - `.github/workflows/ci.yml`：CI 工作流
 - `docs/`：Proposal、架构、PRD、API、DB、MVP 文档
 
@@ -126,6 +130,7 @@ python3 -m uvicorn app.main:app --reload
 - `alembic.ini`
 - `alembic/env.py`
 - `alembic/versions/20260324_0001_initial_schema.py`
+- `alembic/versions/20260325_0002_add_evaluation_run.py`
 
 执行迁移：
 
@@ -159,6 +164,7 @@ make demo
 
 - 一键跑通“订单风控规则接入与回归治理”真实示例
 - 手动逐步执行：配置规则、创建会话、上报事件、抽取知识、审核、检索、反馈、查看审计
+- 运行系统评估：对数据库、上下文透传、抽取质量、规则命中、审计与反馈闭环、时延预算进行打分
 
 控制台会直接调用当前服务 API，并透传：
 
@@ -180,6 +186,31 @@ python3 scripts/http_client.py demo
 python3 scripts/http_client.py create-session --repo-id demo-repo --branch-name feature/demo
 python3 scripts/http_client.py retrieve --session-id sess_xxx --query "为订单风控增加渠道黑名单校验" --repo-id demo-repo --file-path src/order/risk/check.ts
 ```
+
+## 系统评估
+
+如果服务已启动，可以直接执行：
+
+```bash
+make evaluate
+```
+
+或：
+
+```bash
+python3 scripts/evaluate_system.py --format markdown
+python3 scripts/evaluate_system.py --format json --output runtime/evaluation.json
+```
+
+评估框架会执行内建真实场景，并输出：
+
+- readiness score
+- 分类得分：availability / extraction / retrieval / governance / latency
+- 关键失败项
+- 评估过程中产生的 `session_id`、`knowledge_id`、`request_id`
+- 最近一次评估历史，可在控制台和 API 中查看
+
+也可以通过浏览器控制台中的“运行系统评估”按钮触发。
 
 ## Docker 启动
 
@@ -256,6 +287,10 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 - `POST /api/v1/feedback/knowledge`
 - `POST /api/v1/feedback/context-pack`
 - `GET /api/v1/audit/logs`
+- `GET /api/v1/evaluation/scenarios`
+- `POST /api/v1/evaluation/run`
+- `GET /api/v1/evaluation/runs`
+- `GET /api/v1/evaluation/runs/{run_id}`
 - `GET /console`
 - `GET /readyz`
 

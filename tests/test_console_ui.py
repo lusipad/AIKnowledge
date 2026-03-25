@@ -18,6 +18,7 @@ class ConsoleUiTestCase(unittest.TestCase):
         self.assertEqual(console_response.status_code, 200)
         self.assertIn('text/html', console_response.headers['content-type'])
         self.assertIn('AI Coding Knowledge Console', console_response.text)
+        self.assertIn('系统自评与验收', console_response.text)
 
         script_response = self.client.get('/static/console/main.js')
         self.assertEqual(script_response.status_code, 200)

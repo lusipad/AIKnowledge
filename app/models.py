@@ -236,3 +236,21 @@ class AuditLog(Base):
     scope_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     detail: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+class EvaluationRun(Base):
+    __tablename__ = "evaluation_run"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    scenario_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="full")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", index=True)
+    score: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False, default=0)
+    passed_checks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_checks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    report: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

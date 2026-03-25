@@ -212,6 +212,27 @@
             </div>
           </section>
 
+          <section class="surface evaluation-surface" data-reveal>
+            <div class="surface-header">
+              <div>
+                <p class="eyebrow">Evaluation</p>
+                <h2>系统自评与验收</h2>
+              </div>
+              <button id="runEvaluationButton" class="button button-primary" type="button">运行系统评估</button>
+            </div>
+            <div class="evaluation-grid">
+              <div class="evaluation-score-card">
+                <span class="status-label">Readiness Score</span>
+                <strong id="evaluationScore">未运行</strong>
+                <p id="evaluationStatusText" class="evaluation-status-text">先运行一次评估，系统会对关键链路做打分。</p>
+              </div>
+              <div id="evaluationSummary" class="empty-state">
+                评估会校验数据库、请求上下文、知识抽取、规则命中、审计透传、反馈闭环与时延预算。
+              </div>
+            </div>
+            <pre id="evaluationJson" class="json-block">暂无数据</pre>
+          </section>
+
           <section class="data-grid">
             <article class="surface" data-reveal>
               <div class="surface-header">

@@ -16,5 +16,8 @@ client-demo:
 verify-llm:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/verify_llm.py
 
+evaluate:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/evaluate_system.py
+
 migrate:
 	PYTHONDONTWRITEBYTECODE=1 alembic upgrade head
