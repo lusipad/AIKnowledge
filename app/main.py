@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.request_context import RequestContextMiddleware
 from app.routers.audit import router as audit_router
 from app.routers.config import router as config_router
@@ -35,7 +35,10 @@ async def lifespan(_: FastAPI):
         seed_default_profiles(database)
     finally:
         database.close()
-    yield
+    try:
+        yield
+    finally:
+        engine.dispose()
 
 
 app = FastAPI(

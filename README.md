@@ -2,6 +2,13 @@
 
 这是一个基于 `FastAPI + SQLAlchemy` 的 MVP / 生产化过渡版本实现，用来验证 `AI Coding 团队知识与记忆系统` 的核心链路，并为后续升级到 `PostgreSQL + Alembic + 向量检索` 预留结构。
 
+## 当前定位
+
+- 当前版本定位为：`单团队 / 单仓库` 试点版
+- 当前目标是：稳定验证采集、抽取、审核、检索、反馈、审计与评估闭环
+- `X-Tenant-Id`、`X-Team-Id`、`X-User-Id` 当前用于请求上下文透传与审计记录，不代表已实现多租户隔离
+- 服务启动不再隐式建表；首次运行前需要先执行数据库初始化或 Alembic 迁移
+
 ## 当前已实现
 
 - 会话创建与查询
@@ -63,6 +70,14 @@
 
 ## 本地启动
 
+首次启动前先初始化数据库：
+
+```bash
+make init-db
+```
+
+然后启动服务：
+
 ```bash
 python3 -m uvicorn app.main:app --reload
 ```
@@ -109,6 +124,13 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 ```
 
 启用 `AICODING_API_KEY` 后，除 `/`、`/healthz`、`/docs`、`/openapi.json` 外，其余接口都需要：
+
+以下路径仍保持免鉴权，便于探针和 console 使用：
+
+- `/readyz`
+- `/console`
+- `/favicon.ico`
+- `/static/console/*`
 
 - `X-API-Key: your-secret`
 - 或 `Authorization: Bearer your-secret`
@@ -310,6 +332,7 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 
 - `X-Request-Id` 会写入响应头，并出现在大部分响应体的 `request_id`
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id`、`X-Client-Type` 会进入会话元数据和审计日志
+- 当前试点版不会基于这些字段做跨租户 / 跨团队隔离过滤
 
 ## 配套文件
 
@@ -324,9 +347,11 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 
 ## 当前限制
 
+- 当前版本默认服务于 `单团队 / 单仓库` 试点场景，尚未实现真实多租户隔离与跨团队权限裁剪
 - 向量检索目前是简单关键词向量后端，不是真实 embedding / pgvector 检索
 - 抽取链路支持可选 LLM 增强，但当前仍是同步执行，尚未接入队列和异步 worker
 - 权限和敏感信息控制仍是基础骨架，当前仅支持单一 API Key
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 失效策略尚未自动关联代码变更与版本事件
-- Alembic 已提供初始迁移，但尚未引入持续迁移流程与 DB schema drift 校验
+- 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast
+- Alembic 已提供初始迁移，但尚未引入持续 schema drift 校验

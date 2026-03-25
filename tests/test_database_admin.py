@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, normalize_database_url
 from app.models import ConfigProfile
-from app.services.database_admin import database_schema_status, initialize_database
+from app.services.database_admin import alembic_version_present, database_schema_status, initialize_database
 
 
 class DatabaseAdminTestCase(unittest.TestCase):
@@ -55,3 +55,22 @@ class DatabaseAdminTestCase(unittest.TestCase):
         self.assertTrue(schema_ready)
         self.assertEqual(missing_tables, [])
         self.assertGreaterEqual(profile_count, 1)
+
+    def test_initialize_database_stamps_existing_schema_without_recreating_tables(self):
+        temp_dir = Path(tempfile.mkdtemp(prefix='aiknowledge-db-admin-stamp-'))
+        database_url = normalize_database_url(f"sqlite:///{(temp_dir / 'stamp.db').as_posix()}")
+        engine = create_engine(database_url, connect_args={'check_same_thread': False})
+        try:
+            Base.metadata.create_all(bind=engine)
+            self.assertFalse(alembic_version_present(engine))
+            engine.dispose()
+
+            initialize_database(database_url, seed_profiles=False)
+
+            validation_engine = create_engine(database_url, connect_args={'check_same_thread': False})
+            try:
+                self.assertTrue(alembic_version_present(validation_engine))
+            finally:
+                validation_engine.dispose()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)

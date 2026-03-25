@@ -22,6 +22,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Initialize database
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          python scripts/init_db.py
+
       - name: Run unit tests
         env:
           PYTHONDONTWRITEBYTECODE: '1'
