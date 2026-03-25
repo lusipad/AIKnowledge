@@ -40,6 +40,8 @@ class ConsoleUiTestCase(unittest.TestCase):
         ready_response = self.client.get('/readyz')
         self.assertEqual(ready_response.status_code, 200)
         self.assertIn(ready_response.json()['status'], {'ok', 'degraded'})
+        self.assertIn('schema', ready_response.json())
+        self.assertIn('ok', ready_response.json()['schema'])
 
 
 class ConsoleUiWithApiKeyTestCase(unittest.TestCase):

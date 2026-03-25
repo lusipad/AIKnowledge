@@ -19,7 +19,7 @@ from app.routers.ui import router as ui_router
 from app.security import ApiKeyMiddleware
 from app.services.bootstrap import seed_default_profiles
 from app.services.database_admin import ensure_database_ready
-from app.services.health import database_healthcheck
+from app.services.health import database_readiness_status
 from app.settings import load_settings
 
 
@@ -83,10 +83,11 @@ def root():
 @app.get('/healthz')
 def healthz():
     current_settings = load_settings()
-    db_ok, db_detail = database_healthcheck()
+    readiness_ok, readiness_detail = database_readiness_status()
     return {
-        'status': 'ok' if db_ok else 'degraded',
-        'database': {'ok': db_ok, 'detail': db_detail},
+        'status': 'ok' if readiness_ok else 'degraded',
+        'database': readiness_detail['database'],
+        'schema': readiness_detail['schema'],
         'vector_backend': current_settings.vector_backend,
         'auth_enabled': current_settings.api_key_enabled,
         'llm': {

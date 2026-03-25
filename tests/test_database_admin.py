@@ -4,11 +4,17 @@ import unittest
 from pathlib import Path
 
 from sqlalchemy import create_engine, select
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, normalize_database_url
 from app.models import ConfigProfile
-from app.services.database_admin import alembic_version_present, database_schema_status, initialize_database
+from app.services.database_admin import (
+    alembic_version_present,
+    database_schema_status,
+    initialize_database,
+    schema_drift_status,
+)
 
 
 class DatabaseAdminTestCase(unittest.TestCase):
@@ -74,3 +80,40 @@ class DatabaseAdminTestCase(unittest.TestCase):
                 validation_engine.dispose()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_schema_drift_status_reports_in_sync_after_initialize(self):
+        temp_dir = Path(tempfile.mkdtemp(prefix='aiknowledge-db-admin-drift-ok-'))
+        database_url = normalize_database_url(f"sqlite:///{(temp_dir / 'drift_ok.db').as_posix()}")
+        try:
+            initialize_database(database_url, seed_profiles=False)
+
+            engine = create_engine(database_url, connect_args={'check_same_thread': False})
+            try:
+                schema_ok, detail = schema_drift_status(engine, database_url=database_url)
+            finally:
+                engine.dispose()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        self.assertTrue(schema_ok)
+        self.assertEqual(detail['diffs'], [])
+        self.assertEqual(detail['current_heads'], detail['expected_heads'])
+
+    def test_schema_drift_status_reports_extra_table_drift(self):
+        temp_dir = Path(tempfile.mkdtemp(prefix='aiknowledge-db-admin-drift-bad-'))
+        database_url = normalize_database_url(f"sqlite:///{(temp_dir / 'drift_bad.db').as_posix()}")
+        try:
+            initialize_database(database_url, seed_profiles=False)
+
+            engine = create_engine(database_url, connect_args={'check_same_thread': False})
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text('CREATE TABLE drift_only_table (id INTEGER PRIMARY KEY)'))
+                schema_ok, detail = schema_drift_status(engine, database_url=database_url)
+            finally:
+                engine.dispose()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        self.assertFalse(schema_ok)
+        self.assertTrue(any('drift_only_table' in diff for diff in detail['diffs']))

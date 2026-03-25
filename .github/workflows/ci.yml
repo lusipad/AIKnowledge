@@ -28,6 +28,12 @@ jobs:
         run: |
           python scripts/init_db.py
 
+      - name: Check schema drift
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          python scripts/check_schema_drift.py
+
       - name: Run unit tests
         env:
           PYTHONDONTWRITEBYTECODE: '1'

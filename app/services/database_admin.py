@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from alembic import command
+from alembic.autogenerate import compare_metadata
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
 from sqlalchemy.orm import sessionmaker
 
@@ -46,6 +49,50 @@ def database_schema_status(database_engine=engine) -> tuple[bool, list[str]]:
 def alembic_version_present(database_engine=engine) -> bool:
     inspector = inspect(database_engine)
     return 'alembic_version' in set(inspector.get_table_names())
+
+
+def _serialize_schema_diffs(diffs: list[object]) -> list[str]:
+    return [repr(diff) for diff in diffs]
+
+
+def _include_schema_object(object_, name, type_, reflected, compare_to) -> bool:
+    if type_ == 'table' and name == 'alembic_version':
+        return False
+    return True
+
+
+def schema_drift_status(database_engine=engine, *, database_url: str | None = None) -> tuple[bool, dict]:
+    schema_ready, missing_tables = database_schema_status(database_engine)
+    config = build_alembic_config(database_url)
+    script = ScriptDirectory.from_config(config)
+    expected_heads = sorted(script.get_heads())
+
+    if not schema_ready:
+        return False, {
+            'schema_ready': schema_ready,
+            'missing_tables': missing_tables,
+            'expected_heads': expected_heads,
+            'current_heads': [],
+            'diffs': [],
+        }
+
+    with database_engine.connect() as connection:
+        migration_context = MigrationContext.configure(
+            connection,
+            opts={'compare_type': True, 'include_object': _include_schema_object},
+        )
+        current_heads = sorted(migration_context.get_current_heads())
+        diffs = compare_metadata(migration_context, Base.metadata)
+
+    detail = {
+        'schema_ready': True,
+        'missing_tables': [],
+        'expected_heads': expected_heads,
+        'current_heads': current_heads,
+        'diffs': _serialize_schema_diffs(diffs),
+    }
+    schema_in_sync = current_heads == expected_heads and not diffs
+    return schema_in_sync, detail
 
 
 def ensure_database_ready(database_engine=engine) -> None:

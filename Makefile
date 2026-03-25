@@ -19,5 +19,8 @@ verify-llm:
 evaluate:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/evaluate_system.py
 
+check-schema:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_schema_drift.py
+
 migrate:
 	PYTHONDONTWRITEBYTECODE=1 alembic upgrade head

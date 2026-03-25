@@ -36,6 +36,7 @@
 - 可配置外部 LLM 验证接口与连通性验证脚本
 - GitHub Actions CI 工作流
 - 数据库健康检查
+- 持续 schema drift 校验
 
 ## 目录
 
@@ -62,6 +63,7 @@
 - `scripts/demo_flow.py`：本地演示脚本
 - `scripts/http_client.py`：HTTP 客户端命令行
 - `scripts/verify_llm.py`：LLM 验证脚本
+- `scripts/check_schema_drift.py`：数据库 schema drift 校验脚本
 - `scripts/evaluate_system.py`：通过 HTTP 触发系统评估并输出 Markdown / JSON 报告
 - `app/static/console/`：浏览器控制台静态前端
 - `app/routers/ui.py`：控制台路由与 favicon
@@ -266,6 +268,7 @@ docker compose up --build
 返回内容包括：
 
 - 数据库连通性
+- schema 是否与 Alembic head 一致
 - 当前向量后端
 - 是否启用 API Key
 - 是否已配置外部 LLM 验证
@@ -289,6 +292,28 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 
 - `GET /api/v1/llm/config`
 - `POST /api/v1/llm/verify`
+
+## Schema Drift 校验
+
+可直接执行：
+
+```bash
+make check-schema
+```
+
+或：
+
+```bash
+python3 scripts/check_schema_drift.py
+```
+
+返回内容包括：
+
+- 当前数据库是否与 Alembic head 一致
+- `current_heads` 与 `expected_heads`
+- metadata diff 明细
+
+`/healthz` 与 `/readyz` 也会返回 `schema.ok` 和 drift 明细，便于探针、发布前检查和 CI 判定。
 
 ## 已实现核心接口
 
@@ -361,4 +386,3 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 失效策略尚未自动关联代码变更与版本事件
 - 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast
-- Alembic 已提供初始迁移，但尚未引入持续 schema drift 校验
