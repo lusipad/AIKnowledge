@@ -115,6 +115,14 @@ def main() -> int:
     create_session_parser.add_argument('--task-id')
     create_session_parser.add_argument('--client-type', default='cli')
 
+    list_sessions_parser = subparsers.add_parser('list-sessions')
+    list_sessions_parser.add_argument('--repo-id')
+    list_sessions_parser.add_argument('--status')
+    list_sessions_parser.add_argument('--client-type')
+    list_sessions_parser.add_argument('--task-id')
+    list_sessions_parser.add_argument('--page', type=int, default=1)
+    list_sessions_parser.add_argument('--page-size', type=int, default=20)
+
     append_events_parser = subparsers.add_parser('append-events')
     append_events_parser.add_argument('--session-id', required=True)
     append_events_parser.add_argument('--events-json', required=True, help='JSON array of event objects')
@@ -127,6 +135,15 @@ def main() -> int:
     retrieve_parser.add_argument('--query-type', default='general')
     retrieve_parser.add_argument('--file-path', action='append', default=[])
     retrieve_parser.add_argument('--token-budget', type=int, default=4000)
+
+    list_retrieval_logs_parser = subparsers.add_parser('list-retrieval-logs')
+    list_retrieval_logs_parser.add_argument('--session-id')
+    list_retrieval_logs_parser.add_argument('--repo-id')
+    list_retrieval_logs_parser.add_argument('--query-type')
+    list_retrieval_logs_parser.add_argument('--limit', type=int)
+
+    get_retrieval_log_parser = subparsers.add_parser('get-retrieval-log')
+    get_retrieval_log_parser.add_argument('--request-id', required=True)
 
     subparsers.add_parser('demo')
 
@@ -142,6 +159,19 @@ def main() -> int:
                 'client_type': args.client_type,
             }
             _print_payload(client.create_session(payload))
+            return 0
+
+        if args.command == 'list-sessions':
+            _print_payload(
+                client.list_sessions(
+                    repo_id=args.repo_id,
+                    status=args.status,
+                    client_type=args.client_type,
+                    task_id=args.task_id,
+                    page=args.page,
+                    page_size=args.page_size,
+                )
+            )
             return 0
 
         if args.command == 'append-events':
@@ -163,6 +193,21 @@ def main() -> int:
                 'token_budget': args.token_budget,
             }
             _print_payload(client.retrieve_context_pack(payload))
+            return 0
+
+        if args.command == 'list-retrieval-logs':
+            _print_payload(
+                client.list_retrieval_logs(
+                    session_id=args.session_id,
+                    repo_id=args.repo_id,
+                    query_type=args.query_type,
+                    limit=args.limit,
+                )
+            )
+            return 0
+
+        if args.command == 'get-retrieval-log':
+            _print_payload(client.get_retrieval_log(args.request_id))
             return 0
 
         if args.command == 'demo':

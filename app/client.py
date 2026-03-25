@@ -77,6 +77,9 @@ class AiKnowledgeClient:
     def create_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.request('POST', '/api/v1/sessions', payload=payload)
 
+    def list_sessions(self, **query: Any) -> dict[str, Any]:
+        return self.request('GET', '/api/v1/sessions', query=query)
+
     def append_context_events(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.request('POST', '/api/v1/context/events', payload=payload)
 
@@ -94,6 +97,12 @@ class AiKnowledgeClient:
 
     def retrieve_context_pack(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.request('POST', '/api/v1/retrieval/query', payload=payload)
+
+    def list_retrieval_logs(self, **query: Any) -> dict[str, Any]:
+        return self.request('GET', '/api/v1/retrieval/logs', query=query)
+
+    def get_retrieval_log(self, request_id: str) -> dict[str, Any]:
+        return self.request('GET', f'/api/v1/retrieval/logs/{request_id}')
 
     def submit_knowledge_feedback(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.request('POST', '/api/v1/feedback/knowledge', payload=payload)

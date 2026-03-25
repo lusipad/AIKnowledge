@@ -72,6 +72,15 @@ class HttpE2EFlowTestCase(unittest.TestCase):
         self.assertEqual(session_payload['data']['client_type'], 'agent')
         session_id = session_payload['data']['session_id']
 
+        sessions_response = self.client.get(
+            '/api/v1/sessions',
+            params={'repo_id': 'demo-repo', 'page': 1, 'page_size': 10},
+            headers=request_headers,
+        )
+        self.assertEqual(sessions_response.status_code, 200)
+        self.assertEqual(sessions_response.json()['data']['total'], 1)
+        self.assertEqual(sessions_response.json()['data']['items'][0]['session_id'], session_id)
+
         events_response = self.client.post(
             '/api/v1/context/events',
             json={
@@ -176,6 +185,28 @@ class HttpE2EFlowTestCase(unittest.TestCase):
             headers=request_headers,
         )
         self.assertEqual(knowledge_feedback_response.status_code, 200)
+
+        retrieval_logs_response = self.client.get(
+            '/api/v1/retrieval/logs',
+            params={'session_id': session_id, 'repo_id': 'demo-repo', 'query_type': 'feature_impl', 'limit': 5},
+            headers=request_headers,
+        )
+        self.assertEqual(retrieval_logs_response.status_code, 200)
+        retrieval_logs_payload = retrieval_logs_response.json()['data']
+        self.assertEqual(len(retrieval_logs_payload), 1)
+        self.assertEqual(retrieval_logs_payload[0]['request_id'], request_id)
+        self.assertEqual(retrieval_logs_payload[0]['knowledge_feedback_count'], 1)
+        self.assertEqual(retrieval_logs_payload[0]['context_feedback']['feedback_score'], 4)
+
+        retrieval_log_detail_response = self.client.get(
+            f'/api/v1/retrieval/logs/{request_id}',
+            headers=request_headers,
+        )
+        self.assertEqual(retrieval_log_detail_response.status_code, 200)
+        retrieval_log_detail = retrieval_log_detail_response.json()['data']
+        self.assertEqual(retrieval_log_detail['request_id'], request_id)
+        self.assertEqual(len(retrieval_log_detail['context_pack_feedback']), 1)
+        self.assertEqual(len(retrieval_log_detail['knowledge_feedback']), 1)
 
         audit_logs_response = self.client.get('/api/v1/audit/logs', headers=request_headers)
         self.assertEqual(audit_logs_response.status_code, 200)

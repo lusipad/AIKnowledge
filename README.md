@@ -12,6 +12,7 @@
 ## 当前已实现
 
 - 会话创建与查询
+- 会话列表与活跃度概览
 - 上下文事件上报
 - 基于启发式规则的知识信号识别
 - 可选 LLM 增强的知识抽取任务创建与查询
@@ -19,6 +20,7 @@
 - 基础配置中心与版本回滚
 - 检索排序、规则去重与上下文包返回
 - 检索调试接口
+- 检索日志详情与反馈回看
 - 知识反馈与上下文包反馈
 - 审计日志查询
 - 本地 HTTP 客户端与 demo 链路
@@ -207,7 +209,10 @@ make client-demo
 ```bash
 python3 scripts/http_client.py demo
 python3 scripts/http_client.py create-session --repo-id demo-repo --branch-name feature/demo
+python3 scripts/http_client.py list-sessions --repo-id demo-repo --page 1 --page-size 10
 python3 scripts/http_client.py retrieve --session-id sess_xxx --query "为订单风控增加渠道黑名单校验" --repo-id demo-repo --file-path src/order/risk/check.ts
+python3 scripts/http_client.py list-retrieval-logs --repo-id demo-repo --query-type feature_impl --limit 5
+python3 scripts/http_client.py get-retrieval-log --request-id ret_xxx
 ```
 
 ## 系统评估
@@ -288,6 +293,7 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 ## 已实现核心接口
 
 - `POST /api/v1/sessions`
+- `GET /api/v1/sessions`
 - `GET /api/v1/sessions/{session_id}`
 - `POST /api/v1/context/events`
 - `GET /api/v1/signals`
@@ -304,6 +310,7 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 - `POST /api/v1/retrieval/query`
 - `POST /api/v1/retrieval/debug`
 - `GET /api/v1/retrieval/logs`
+- `GET /api/v1/retrieval/logs/{request_id}`
 - `GET /api/v1/config/profile`
 - `GET /api/v1/config/profile/{profile_id}`
 - `PUT /api/v1/config/profile/{profile_id}`

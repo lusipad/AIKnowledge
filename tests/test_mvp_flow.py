@@ -18,8 +18,8 @@ from app.routers.knowledge import (
     review_knowledge,
     update_knowledge,
 )
-from app.routers.retrieval import debug_retrieval, list_retrieval_logs, retrieve_context_pack
-from app.routers.sessions import create_session
+from app.routers.retrieval import debug_retrieval, get_retrieval_log, list_retrieval_logs, retrieve_context_pack
+from app.routers.sessions import create_session, list_sessions
 from app.schemas import (
     ConfigProfileUpsertRequest,
     ConfigRollbackRequest,
@@ -59,6 +59,11 @@ class MvpFlowTestCase(unittest.TestCase):
         )
         session_id = session_response['data']['session_id']
         self.assertTrue(session_id.startswith('sess_'))
+        sessions_response = list_sessions(repo_id='demo-repo', page=1, page_size=10, database=self.database)
+        self.assertGreaterEqual(sessions_response['data']['total'], 1)
+        self.assertEqual(sessions_response['data']['items'][0]['session_id'], session_id)
+        self.assertEqual(sessions_response['data']['items'][0]['event_count'], 0)
+        self.assertEqual(sessions_response['data']['items'][0]['signal_count'], 0)
 
         events_response = append_context_events(
             ContextEventsRequest(
@@ -86,6 +91,10 @@ class MvpFlowTestCase(unittest.TestCase):
 
         signals_response = list_signals(None, self.database)
         self.assertGreaterEqual(len(signals_response['data']), 2)
+
+        sessions_after_events = list_sessions(repo_id='demo-repo', page=1, page_size=10, database=self.database)
+        self.assertEqual(sessions_after_events['data']['items'][0]['event_count'], 2)
+        self.assertEqual(sessions_after_events['data']['items'][0]['signal_count'], 2)
 
         extract_response = create_extract_task(ExtractRequest(signal_ids=signal_ids, force=False), self.database)
         self.assertEqual(len(extract_response['data']['items']), 2)
@@ -215,8 +224,16 @@ class MvpFlowTestCase(unittest.TestCase):
         self.assertGreaterEqual(len(knowledge_list['data']['items']), 1)
         self.assertGreaterEqual(knowledge_list['data']['total'], 1)
 
-        retrieval_logs = list_retrieval_logs(self.database)
+        retrieval_logs = list_retrieval_logs(session_id=session_id, database=self.database)
         self.assertGreaterEqual(len(retrieval_logs['data']), 1)
+        self.assertEqual(retrieval_logs['data'][0]['knowledge_feedback_count'], 1)
+        self.assertEqual(retrieval_logs['data'][0]['context_feedback']['feedback_score'], 4)
+
+        retrieval_log_detail = get_retrieval_log(request_id, self.database)
+        self.assertEqual(retrieval_log_detail['data']['request_id'], request_id)
+        self.assertGreaterEqual(len(retrieval_log_detail['data']['results']), 1)
+        self.assertEqual(len(retrieval_log_detail['data']['context_pack_feedback']), 1)
+        self.assertEqual(len(retrieval_log_detail['data']['knowledge_feedback']), 1)
 
         audit_logs = list_audit_logs(limit=50, action=None, resource_type=None, database=self.database)
         self.assertGreaterEqual(len(audit_logs['data']), 1)

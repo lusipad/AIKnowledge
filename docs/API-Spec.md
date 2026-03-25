@@ -120,6 +120,24 @@ API 设计目标：
 
 用途：获取会话基础信息与状态。
 
+## 3.4 查询会话列表
+
+### `GET /sessions`
+
+常用查询参数：
+
+- `repo_id`
+- `status`
+- `client_type`
+- `task_id`
+- `page`
+- `page_size`
+
+响应字段补充：
+
+- `event_count`
+- `signal_count`
+
 ## 4. 检索接口
 
 ## 4.1 检索上下文包
@@ -326,7 +344,25 @@ API 设计目标：
 
 用途：供评估与排障查看召回记录。
 
-## 9.3 查询审计日志
+常用查询参数：
+
+- `session_id`
+- `repo_id`
+- `query_type`
+- `limit`
+
+响应字段补充：
+
+- `context_feedback`
+- `knowledge_feedback_count`
+
+## 9.3 查询检索日志详情
+
+### `GET /retrieval/logs/{request_id}`
+
+用途：查看单次检索请求的候选结果、上下文包反馈和关联知识反馈。
+
+## 9.4 查询审计日志
 
 ### `GET /audit/logs`
 
