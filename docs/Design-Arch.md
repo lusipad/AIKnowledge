@@ -203,7 +203,7 @@ IDE / CLI / Agent / MCP Client
 
 - IDE 插件接入。
 - CLI / Agent 接入。
-- `MCP Server`。
+- `MCP Server`。当前仓库已落地独立 `app/mcp_server.py`，通过标准 MCP tools 包装 HTTP API。
 - 平台内部 API Gateway。
 
 ### 5.1.2 职责

@@ -25,6 +25,12 @@ evaluate:
 benchmark:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/benchmark_retrieval.py
 
+run-mcp:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/run_mcp_server.py --transport stdio
+
+run-mcp-http:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/run_mcp_server.py --transport streamable-http --port 8765
+
 check-schema:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_schema_drift.py
 

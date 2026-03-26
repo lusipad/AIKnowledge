@@ -77,6 +77,9 @@
 - `scripts/run_extract_worker.py`：抽取任务 worker 脚本
 - `scripts/evaluate_system.py`：通过 HTTP 触发系统评估并输出 Markdown / JSON 报告
 - `scripts/benchmark_retrieval.py`：检索 benchmark / 压测脚本
+- `app/mcp_server.py`：独立 MCP Server，复用 HTTP API 暴露 tools/resources
+- `scripts/run_mcp_server.py`：MCP Server 启动脚本
+- `requirements-mcp.txt`：MCP Server 独立依赖
 - `app/static/console/`：浏览器控制台静态前端
 - `app/routers/ui.py`：控制台路由与 favicon
 - `app/routers/evaluation.py`：评估接口
@@ -215,6 +218,88 @@ python3 -m uvicorn app.main:app --reload
 ```bash
 make migrate
 ```
+
+## MCP Server
+
+仓库现在提供了独立 `MCP Server`，适合让外部 Agent / IDE 通过标准 MCP 调用本服务。
+
+建议把 `MCP Server` 放到独立 Python 环境中安装，避免和主服务运行时依赖互相影响：
+
+```bash
+pip install -r requirements-mcp.txt
+```
+
+服务端仍然需要先启动本项目 HTTP API：
+
+```bash
+python3 scripts/init_db.py
+python3 -m uvicorn app.main:app --reload
+```
+
+然后启动 `MCP Server`。
+
+`stdio` 模式：
+
+```bash
+python3 scripts/run_mcp_server.py --transport stdio
+```
+
+`streamable-http` 模式：
+
+```bash
+python3 scripts/run_mcp_server.py --transport streamable-http --port 8765
+```
+
+默认会通过以下环境变量连接你的 AIKnowledge HTTP 服务：
+
+- `AICODING_API_BASE_URL`
+- `AICODING_API_KEY`
+- `AICODING_TENANT_ID`
+- `AICODING_TEAM_ID`
+- `AICODING_USER_ID`
+- `AICODING_USER_ROLE`
+- `AICODING_CLIENT_TYPE`
+
+常用 MCP tools：
+
+- `health_check`
+- `create_session`
+- `append_context_events`
+- `create_extract_task`
+- `review_knowledge`
+- `retrieve_context_pack`
+- `list_knowledge`
+- `run_evaluation`
+- `create_graph_relation`
+- `get_knowledge_graph`
+- `get_repo_knowledge_map`
+- `list_directory_users`
+- `sync_directory`
+
+Claude Desktop / 兼容 MCP Client 的 `stdio` 配置示例：
+
+```json
+{
+  "mcpServers": {
+    "aiknowledge": {
+      "command": "python",
+      "args": ["D:/Repos/AIKnowledge/scripts/run_mcp_server.py", "--transport", "stdio"],
+      "env": {
+        "AICODING_API_BASE_URL": "http://127.0.0.1:8000",
+        "AICODING_API_KEY": "your-secret",
+        "AICODING_TENANT_ID": "tenant-demo",
+        "AICODING_TEAM_ID": "team-demo",
+        "AICODING_USER_ID": "agent-user",
+        "AICODING_USER_ROLE": "admin"
+      }
+    }
+  }
+}
+```
+
+如果使用 `streamable-http`，默认 MCP endpoint 为：
+
+- `http://127.0.0.1:8765/mcp`
 
 ## 自动化测试
 

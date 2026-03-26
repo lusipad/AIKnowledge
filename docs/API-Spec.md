@@ -532,15 +532,57 @@ API 设计目标：
 
 用途：查看指定仓库的 knowledge map，返回与该仓库相关的可见节点和边，支持跨仓关系展开。
 
-## 10. MCP 映射建议
+## 10. MCP 映射
 
-若通过 `MCP` 提供能力，建议映射为以下工具：
+当前仓库已提供独立 `MCP Server`，位于：
 
+- `app/mcp_server.py`
+- `scripts/run_mcp_server.py`
+
+默认暴露的核心 tools 包括：
+
+- `health_check`
 - `create_session`
+- `list_sessions`
 - `append_context_events`
+- `create_extract_task`
+- `get_extract_task`
+- `review_knowledge`
 - `retrieve_context_pack`
+- `list_retrieval_logs`
+- `get_retrieval_log`
 - `submit_knowledge_feedback`
-- `get_repo_config`
+- `submit_context_pack_feedback`
+- `list_knowledge`
+- `get_knowledge`
+- `list_evaluation_scenarios`
+- `run_evaluation`
+- `list_evaluation_runs`
+- `get_evaluation_run`
+- `list_directory_users`
+- `list_directory_groups`
+- `upsert_directory_user`
+- `upsert_directory_group`
+- `sync_directory`
+- `create_graph_relation`
+- `get_knowledge_graph`
+- `get_repo_knowledge_map`
+
+同时提供资源：
+
+- `aiknowledge://overview`
+- `aiknowledge://health`
+
+推荐调用顺序：
+
+1. `health_check`
+2. `create_session`
+3. `append_context_events`
+4. `create_extract_task`
+5. `review_knowledge`
+6. `retrieve_context_pack`
+7. `create_graph_relation` / `get_knowledge_graph`
+8. `run_evaluation`
 
 ## 11. 幂等与限流
 
