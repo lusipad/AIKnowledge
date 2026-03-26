@@ -27,15 +27,17 @@ MVP 需要回答三个问题：
 - Hybrid Retrieval。
 - 来源追踪。
 - 基础反馈收集。
+- `tenant/team` 请求级隔离与资源 ACL。
+- PostgreSQL + Alembic + 原生 `pgvector` 检索链路。
+- 外部 IAM Bearer JWT 与组织/团队作用域同步。
 
 ## 2.2 不做范围
 
 - 多租户复杂治理。
-- 基于 `tenant/team` 的真实隔离与权限裁剪。
 - 组织级全局图谱。
 - 自动复杂失效系统。
-- 高级效果评估平台。
 - 全自动知识发布。
+- 跨系统 SCIM / 目录自动回写。
 
 ## 3. MVP 成功标准
 

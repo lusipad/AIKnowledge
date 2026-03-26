@@ -627,6 +627,12 @@ AI 使用知识
 
 建议：`pgvector`、`Milvus` 或 `OpenSearch Vector`
 
+当前实现说明：
+
+- PostgreSQL 路径已落地 `pgvector` 原生 `vector` 列。
+- 检索排序使用数据库侧 cosine distance 与 HNSW 索引。
+- SQLite / 非 PostgreSQL 环境保留 JSON 向量回退路径，便于本地 demo 与单测。
+
 ### 8.1.3 搜索索引
 
 存储：
@@ -791,7 +797,7 @@ AI 使用知识
 - 敏感数据脱敏。
 - 检索和注入全量审计。
 - 对敏感知识支持“可索引不可直接展示”。
-- 当前 MVP / 试点实现仅保留 `tenant/team` 上下文字段与审计透传，真实隔离放在后续阶段。
+- 当前实现已提供 `tenant/team` 请求级隔离、知识/配置资源 ACL，以及基于 JWKS 的外部 IAM Bearer JWT 同步。
 
 ## 10.3 风险控制
 
@@ -980,21 +986,23 @@ AI 使用知识
 
 ## 16.1 MVP 范围
 
-MVP 只解决单团队、单项目、单仓库的高价值问题：
+原始 MVP 只解决单团队、单项目、单仓库的高价值问题；当前实现已在此基础上扩展到多租户/多团队请求隔离与权限治理：
 
 - 仓库级/路径级指令下发。
 - Runtime Context 组装。
 - Hybrid Retrieval + Metadata Filter + Rerank。
 - 基础知识抽取与审核发布。
 - 基础反馈收集。
+- `tenant/team` 请求级隔离与资源 ACL。
+- 外部 IAM Bearer JWT 与组织/团队作用域同步。
 
 ## 16.2 MVP 不做内容
 
-- 真实多租户隔离与复杂权限裁剪。
 - 组织级多仓图谱。
 - 自动复杂失效推理。
 - 高级评估平台。
 - 全自动知识发布闭环。
+- 跨系统 SCIM / 目录服务自动回写。
 
 ## 16.3 MVP 成功标准
 

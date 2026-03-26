@@ -1,10 +1,10 @@
 # AI Coding Knowledge & Memory MVP
 
-这是一个基于 `FastAPI + SQLAlchemy` 的 MVP / 生产化过渡版本实现，用来验证 `AI Coding 团队知识与记忆系统` 的核心链路，并为后续升级到 `PostgreSQL + Alembic + 向量检索` 预留结构。
+这是一个基于 `FastAPI + SQLAlchemy` 的 MVP / 生产化过渡版本实现，用来验证 `AI Coding 团队知识与记忆系统` 的核心链路。当前版本已经打通 `PostgreSQL + Alembic + 原生 pgvector/JWKS IAM` 主链路，并保留继续扩展到更大规模组织级能力的结构。
 
 ## 当前定位
 
-- 当前版本定位为：`多租户请求隔离 + 平台共享/租户私有双层配置` 的过渡版
+- 当前版本定位为：`多租户请求隔离 + 平台共享/租户私有双层配置 + 原生 pgvector/IAM` 的过渡版
 - 当前目标是：稳定验证采集、抽取、审核、检索、反馈、审计与评估闭环
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id` 已用于会话、知识、提取任务、检索日志、审计和评估的请求级作用域隔离
 - `X-User-Role`、`AICODING_DEFAULT_USER_ROLE`、`AICODING_API_KEY_ROLES` 已用于 `viewer / writer / reviewer / admin` 四级权限裁剪
