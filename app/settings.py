@@ -27,6 +27,7 @@ class AppSettings:
     embedding_base_url: str | None
     embedding_api_key: str | None
     embedding_model: str | None
+    vector_dimensions: int
     embedding_path: str
     embedding_timeout_sec: int
     llm_base_url: str | None
@@ -99,6 +100,7 @@ def load_settings() -> AppSettings:
         embedding_base_url=(os.getenv('AICODING_EMBEDDING_BASE_URL') or '').rstrip('/') or None,
         embedding_api_key=os.getenv('AICODING_EMBEDDING_API_KEY') or None,
         embedding_model=os.getenv('AICODING_EMBEDDING_MODEL') or None,
+        vector_dimensions=max(1, int(os.getenv('AICODING_VECTOR_DIMENSIONS', '1536'))),
         embedding_path=_normalize_llm_chat_path(os.getenv('AICODING_EMBEDDING_PATH')).replace('/chat/completions', '/embeddings'),
         embedding_timeout_sec=max(1, int(os.getenv('AICODING_EMBEDDING_TIMEOUT_SEC', '30'))),
         llm_base_url=(os.getenv('AICODING_LLM_BASE_URL') or '').rstrip('/') or None,
