@@ -498,6 +498,40 @@ API 设计目标：
 }
 ```
 
+### `POST /graph/relations`
+
+用途：创建或更新知识图谱关系，支持跨仓 `repo -> related_repo` 映射。
+
+请求示例：
+
+```json
+{
+  "knowledge_id": "kn_rule_001",
+  "related_knowledge_id": "kn_case_002",
+  "relation_type": "supersedes",
+  "repo_id": "repo-order",
+  "related_repo_id": "repo-gateway",
+  "weight": 0.9,
+  "detail": {
+    "reason": "跨仓改造后由公共规则替代旧案例"
+  }
+}
+```
+
+说明：
+
+- `relation_type` 当前支持 `related_to / implements_rule / supersedes / same_incident_family`
+- `repo_id`、`related_repo_id` 省略时会优先从 `repo` 作用域知识自动推导
+- 需要对两侧知识具备可见性，且当前用户至少为 `reviewer`
+
+### `GET /graph/knowledge/{knowledge_id}`
+
+用途：查看单个知识节点的图谱视图，返回当前知识、关联边以及当前用户可见的相邻节点。
+
+### `GET /graph/repos/{repo_id}/knowledge-map`
+
+用途：查看指定仓库的 knowledge map，返回与该仓库相关的可见节点和边，支持跨仓关系展开。
+
 ## 10. MCP 映射建议
 
 若通过 `MCP` 提供能力，建议映射为以下工具：

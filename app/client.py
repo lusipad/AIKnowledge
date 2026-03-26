@@ -146,6 +146,15 @@ class AiKnowledgeClient:
     def list_directory_groups(self) -> dict[str, Any]:
         return self.request('GET', '/api/v1/iam/directory/groups')
 
+    def create_graph_relation(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.request('POST', '/api/v1/graph/relations', payload=payload)
+
+    def get_knowledge_graph(self, knowledge_id: str) -> dict[str, Any]:
+        return self.request('GET', f'/api/v1/graph/knowledge/{knowledge_id}')
+
+    def get_repo_knowledge_map(self, repo_id: str) -> dict[str, Any]:
+        return self.request('GET', f'/api/v1/graph/repos/{repo_id}/knowledge-map')
+
 
 def build_client_from_env() -> AiKnowledgeClient:
     base_url = os.getenv('AICODING_API_BASE_URL', 'http://127.0.0.1:8000')

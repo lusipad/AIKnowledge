@@ -1,15 +1,15 @@
 import os
 import unittest
-from importlib import reload
 
 from fastapi.testclient import TestClient
 
-import app.main as main_module
+from tests.support import build_test_app
 
 
 class ConsoleUiTestCase(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(main_module.app)
+        self.app = build_test_app()
+        self.client = TestClient(self.app)
         self.client.__enter__()
 
     def tearDown(self):
@@ -49,8 +49,8 @@ class ConsoleUiWithApiKeyTestCase(unittest.TestCase):
     def setUp(self):
         self.previous_api_key = os.environ.get('AICODING_API_KEY')
         os.environ['AICODING_API_KEY'] = 'console-secret'
-        self.main_module = reload(main_module)
-        self.client = TestClient(self.main_module.app)
+        self.app = build_test_app()
+        self.client = TestClient(self.app)
         self.client.__enter__()
 
     def tearDown(self):
@@ -59,7 +59,6 @@ class ConsoleUiWithApiKeyTestCase(unittest.TestCase):
             os.environ.pop('AICODING_API_KEY', None)
         else:
             os.environ['AICODING_API_KEY'] = self.previous_api_key
-        reload(main_module)
 
     def test_console_and_health_routes_remain_accessible_without_api_key(self):
         for path in ('/healthz', '/readyz', '/console', '/static/console/main.js', '/favicon.ico'):

@@ -135,6 +135,27 @@ class KnowledgeSourceRef(Base):
     knowledge: Mapped[KnowledgeItem] = relationship(back_populates="sources")
 
 
+class KnowledgeRelation(Base):
+    __tablename__ = "knowledge_relation"
+    __table_args__ = (
+        Index('ix_knowledge_relation_edge', 'knowledge_id', 'related_knowledge_id', 'relation_type', unique=True),
+    )
+
+    relation_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    repo_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    related_repo_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    knowledge_id: Mapped[str] = mapped_column(ForeignKey("knowledge_item.knowledge_id"), index=True)
+    related_knowledge_id: Mapped[str] = mapped_column(ForeignKey("knowledge_item.knowledge_id"), index=True)
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    weight: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=1.0)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False, default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class ExtractTask(Base):
     __tablename__ = "extract_task"
 

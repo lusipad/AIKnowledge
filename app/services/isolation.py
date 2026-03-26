@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import and_, or_, select
 
-from app.models import AuditLog, ConfigProfile, ConversationSession, EvaluationRun, KnowledgeItem, RetrievalRequest
+from app.models import AuditLog, ConfigProfile, ConversationSession, EvaluationRun, KnowledgeItem, KnowledgeRelation, RetrievalRequest
 from app.request_context import RequestContext, get_request_context
 
 
@@ -100,4 +100,10 @@ def apply_audit_scope(statement, request_context: RequestContext | None = None):
 def apply_evaluation_scope(statement, request_context: RequestContext | None = None):
     current_context = resolve_request_scope(request_context)
     clause = _scope_clause_for_columns(EvaluationRun.tenant_id, EvaluationRun.team_id, current_context)
+    return statement.where(clause) if clause is not None else statement
+
+
+def apply_graph_relation_scope(statement, request_context: RequestContext | None = None):
+    current_context = resolve_request_scope(request_context)
+    clause = _scope_clause_for_columns(KnowledgeRelation.tenant_id, KnowledgeRelation.team_id, current_context)
     return statement.where(clause) if clause is not None else statement

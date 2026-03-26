@@ -152,3 +152,13 @@ class DirectoryGroupUpsertRequest(BaseModel):
 class DirectorySyncRequest(BaseModel):
     users: dict[str, DirectoryUserUpsertRequest] = Field(default_factory=dict)
     groups: dict[str, DirectoryGroupUpsertRequest] = Field(default_factory=dict)
+
+
+class KnowledgeRelationCreateRequest(BaseModel):
+    knowledge_id: str
+    related_knowledge_id: str
+    relation_type: str
+    repo_id: str | None = None
+    related_repo_id: str | None = None
+    weight: float = 1.0
+    detail: dict[str, Any] = Field(default_factory=dict)

@@ -7,8 +7,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.dependencies import get_db
-from app.main import app
 from app.services.bootstrap import seed_default_profiles
+from tests.support import build_test_app
 
 
 class HttpE2EFlowTestCase(unittest.TestCase):
@@ -34,13 +34,14 @@ class HttpE2EFlowTestCase(unittest.TestCase):
             finally:
                 database.close()
 
-        app.dependency_overrides[get_db] = override_get_db
-        self.client = TestClient(app)
+        self.app = build_test_app()
+        self.app.dependency_overrides[get_db] = override_get_db
+        self.client = TestClient(self.app)
         self.client.__enter__()
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
-        app.dependency_overrides.clear()
+        self.app.dependency_overrides.clear()
         Base.metadata.drop_all(bind=self.engine)
         self.engine.dispose()
 

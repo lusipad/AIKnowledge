@@ -15,6 +15,7 @@ from app.services.database_admin import (
     initialize_database,
     run_migrations,
     schema_drift_status,
+    stamp_database,
 )
 
 
@@ -94,6 +95,28 @@ class DatabaseAdminTestCase(unittest.TestCase):
                 schema_ok, detail = schema_drift_status(engine, database_url=database_url)
             finally:
                 engine.dispose()
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        self.assertTrue(schema_ok)
+        self.assertEqual(detail['current_heads'], detail['expected_heads'])
+
+    def test_initialize_database_stamps_when_schema_matches_latest_metadata(self):
+        temp_dir = Path(tempfile.mkdtemp(prefix='aiknowledge-db-admin-head-heal-'))
+        database_url = normalize_database_url(f"sqlite:///{(temp_dir / 'head_heal.db').as_posix()}")
+        engine = create_engine(database_url, connect_args={'check_same_thread': False})
+        try:
+            Base.metadata.create_all(bind=engine)
+            engine.dispose()
+            stamp_database(database_url, revision='20260326_0008')
+
+            initialize_database(database_url, seed_profiles=False)
+
+            validation_engine = create_engine(database_url, connect_args={'check_same_thread': False})
+            try:
+                schema_ok, detail = schema_drift_status(validation_engine, database_url=database_url)
+            finally:
+                validation_engine.dispose()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

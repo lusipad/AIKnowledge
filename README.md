@@ -30,6 +30,7 @@
 - 浏览器控制台与一键真实场景演示
 - 内建评估框架、可视化自评面板与历史评估记录
 - 检索 benchmark / 压测脚本，支持并发、warmup、P50/P95/P99 统计与数据集输入
+- 组织级跨仓知识图谱关系与 repo knowledge map 查询
 - 检索质量约束：生成知识前排优先、配置规则数量受控、摘要与查询保持相关
 - 自动化端到端测试
 - Docker 部署文件与 demo 脚本
@@ -59,6 +60,7 @@
 - `app/services/vector_store.py`：向量检索抽象层
 - `app/services/health.py`：健康检查服务
 - `app/services/directory.py`：目录同步与授权补全
+- `app/services/graph.py`：知识图谱关系与 repo knowledge map
 - `app/services/llm_validation.py`：外部 LLM 连通性验证
 - `alembic/`：数据库迁移骨架
 - `tests/test_http_e2e.py`：HTTP 级端到端测试
@@ -206,6 +208,7 @@ python3 -m uvicorn app.main:app --reload
 - `alembic/versions/20260326_0006_add_config_profile_ownership.py`
 - `alembic/versions/20260326_0007_enable_native_pgvector.py`
 - `alembic/versions/20260326_0008_add_directory_sync_tables.py`
+- `alembic/versions/20260326_0009_add_knowledge_relation_graph.py`
 
 执行迁移：
 
@@ -453,6 +456,9 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - `POST /api/v1/feedback/context-pack`
 - `GET /api/v1/audit/logs`
 - `GET /api/v1/auth/identity`
+- `POST /api/v1/graph/relations`
+- `GET /api/v1/graph/knowledge/{knowledge_id}`
+- `GET /api/v1/graph/repos/{repo_id}/knowledge-map`
 - `GET /api/v1/iam/directory/users`
 - `PUT /api/v1/iam/scim/users/{user_id}`
 - `GET /api/v1/iam/directory/groups`
@@ -488,6 +494,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - `PUT /config/profile/{profile_id}` 支持显式传入 `ownership_mode=shared|tenant|team` 控制 `repo/path` 配置归属
 - 启用 IAM Bearer JWT 后，`tenant/team/user/role` 可直接从外部 token claim 同步，并支持对 `X-Tenant-Id`、`X-Team-Id` 做授权范围校验
 - 目录同步接口可写入 `directory_user / directory_group / directory_group_membership`，并把目录组映射补充到 Bearer JWT 的 `allowed_tenant_ids / allowed_team_ids / user_role`
+- 图谱接口可写入 `knowledge_relation`，支持跨仓 `repo_id -> related_repo_id` 关系与 repo knowledge map 查询
 - 当前内置角色能力为：`viewer` 只读、`writer` 可写会话/检索/反馈、`reviewer` 可审核知识与查看信号、`admin` 可变更配置/知识与执行评估
 
 ## 配套文件

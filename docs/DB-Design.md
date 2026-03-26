@@ -219,10 +219,18 @@
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `relation_id` | bigserial PK | 主键 |
+| `tenant_id` | varchar(64) | 租户 ID |
+| `team_id` | varchar(64) | 团队 ID |
+| `repo_id` | varchar(128) | 左侧仓库 ID |
+| `related_repo_id` | varchar(128) | 右侧仓库 ID |
 | `knowledge_id` | varchar(64) | 左知识 |
 | `related_knowledge_id` | varchar(64) | 右知识 |
-| `relation_type` | varchar(32) | similar/depends_on/supersedes |
+| `relation_type` | varchar(32) | related_to/implements_rule/supersedes/same_incident_family |
 | `weight` | numeric(5,4) | 权重 |
+| `detail` | jsonb | 关系补充信息 |
+| `created_by` | varchar(64) | 创建人 |
+| `created_at` | timestamptz | 创建时间 |
+| `updated_at` | timestamptz | 更新时间 |
 
 ### `knowledge_tag`
 
