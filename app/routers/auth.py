@@ -23,5 +23,6 @@ def get_identity(
             'team_id': request_context.team_id,
             'allowed_tenant_ids': getattr(request.state, 'allowed_tenant_ids', []),
             'allowed_team_ids': getattr(request.state, 'allowed_team_ids', []),
+            'directory_group_ids': getattr(request.state, 'directory_group_ids', []),
         }
     )

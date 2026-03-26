@@ -1,13 +1,26 @@
 import json
 import os
 import unittest
-from importlib import reload
+from contextlib import asynccontextmanager
 
 import jwt
+from fastapi import FastAPI
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-import app.main as main_module
+from app.database import Base
+from app.dependencies import get_db
+from app.request_context import RequestContextMiddleware
+from app.routers.auth import router as auth_router
+from app.routers.iam import router as iam_router
+from app.routers.sessions import router as sessions_router
+from app.security import AuthenticationMiddleware
+import app.services.iam as iam_module
+from app.services.bootstrap import seed_default_profiles
+from app.settings import load_settings
 
 
 def _build_rsa_fixture():
@@ -37,18 +50,61 @@ class IamAuthTestCase(unittest.TestCase):
         os.environ['AICODING_IAM_ISSUER'] = 'https://issuer.example'
         os.environ['AICODING_IAM_AUDIENCE'] = 'aiknowledge'
         os.environ['AICODING_IAM_ROLE_MAPPING'] = 'repo_viewer:viewer,repo_writer:writer,repo_reviewer:reviewer,repo_admin:admin'
-        self.main_module = reload(main_module)
-        self.client = TestClient(self.main_module.app)
+
+        self.engine = create_engine(
+            'sqlite://',
+            connect_args={'check_same_thread': False},
+            poolclass=StaticPool,
+        )
+        self.SessionTesting = sessionmaker(bind=self.engine, autoflush=False, autocommit=False, expire_on_commit=False)
+        Base.metadata.create_all(bind=self.engine)
+
+        database = self.SessionTesting()
+        try:
+            seed_default_profiles(database)
+        finally:
+            database.close()
+
+        def override_get_db():
+            database = self.SessionTesting()
+            try:
+                yield database
+            finally:
+                database.close()
+
+        @asynccontextmanager
+        async def lifespan(_: FastAPI):
+            yield
+
+        settings = load_settings()
+        self.app = FastAPI(lifespan=lifespan)
+        self.app.add_middleware(RequestContextMiddleware)
+        self.app.add_middleware(
+            AuthenticationMiddleware,
+            api_keys=settings.configured_api_keys,
+            api_key_roles=settings.api_key_roles,
+            settings=settings,
+        )
+        self.app.include_router(auth_router)
+        self.app.include_router(sessions_router)
+        self.app.include_router(iam_router)
+        self.app.dependency_overrides[get_db] = override_get_db
+        self.previous_session_local = iam_module.SessionLocal
+        iam_module.SessionLocal = self.SessionTesting
+        self.client = TestClient(self.app)
         self.client.__enter__()
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
+        iam_module.SessionLocal = self.previous_session_local
+        self.app.dependency_overrides.clear()
+        Base.metadata.drop_all(bind=self.engine)
+        self.engine.dispose()
         for key, value in self.previous_env.items():
             if value is None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        reload(main_module)
 
     def _build_token(self, *, roles, tenant_ids, team_ids, tenant_id=None, team_id=None, user_id='iam-user'):
         return jwt.encode(

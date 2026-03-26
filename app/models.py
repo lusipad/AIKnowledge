@@ -276,6 +276,57 @@ class ConfigProfileVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class DirectoryUser(Base):
+    __tablename__ = "directory_user"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    external_ref: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    display_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    memberships: Mapped[list[DirectoryGroupMembership]] = relationship(back_populates="user")
+
+
+class DirectoryGroup(Base):
+    __tablename__ = "directory_group"
+
+    group_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    team_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    external_ref: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    scope_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    mapped_role: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    memberships: Mapped[list[DirectoryGroupMembership]] = relationship(back_populates="group")
+
+
+class DirectoryGroupMembership(Base):
+    __tablename__ = "directory_group_membership"
+    __table_args__ = (
+        Index('ix_directory_group_membership_group_user', 'group_id', 'user_id', unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("directory_group.group_id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("directory_user.user_id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    group: Mapped[DirectoryGroup] = relationship(back_populates="memberships")
+    user: Mapped[DirectoryUser] = relationship(back_populates="memberships")
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

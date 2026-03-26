@@ -28,6 +28,7 @@ API 设计目标：
 - 支持：`X-API-Key` 或 `Authorization: Bearer <api-key>` 作为平台内部 API Key
 - 可通过 `AICODING_API_KEY_ROLES` 为 API Key 绑定角色
 - 可通过 `AICODING_IAM_ROLE_MAPPING` 把外部 IAM 角色映射到内部 `viewer / writer / reviewer / admin`
+- 支持通过 SCIM 风格目录同步接口写入用户/组映射，补充 Bearer JWT 未显式携带的 tenant/team/role 授权范围
 
 ### 2.3 公共请求头
 
@@ -419,6 +420,83 @@ API 设计目标：
 ### `GET /auth/identity`
 
 用途：返回当前请求实际生效的认证来源、用户、角色以及 IAM 同步的 tenant/team 范围。
+
+响应补充：
+
+- `directory_group_ids`：当前 Bearer JWT 用户命中的目录组
+
+### `GET /iam/directory/users`
+
+用途：按当前请求 `tenant/team` 作用域列出目录用户快照，仅 `admin` 可访问。
+
+### `PUT /iam/scim/users/{user_id}`
+
+用途：以 SCIM 风格 upsert 单个目录用户；当请求已带 `tenant/team` 作用域时，未显式传入的字段会自动继承当前作用域。
+
+请求示例：
+
+```json
+{
+  "email": "user@example.com",
+  "display_name": "Platform User",
+  "active": true,
+  "attributes": {
+    "department": "platform"
+  }
+}
+```
+
+### `GET /iam/directory/groups`
+
+用途：按当前请求 `tenant/team` 作用域列出目录组与成员，仅 `admin` 可访问。
+
+### `PUT /iam/scim/groups/{group_id}`
+
+用途：以 SCIM 风格 upsert 单个目录组，并用 `member_user_ids` 全量替换组成员。
+
+请求示例：
+
+```json
+{
+  "display_name": "Platform Reviewers",
+  "scope_type": "team",
+  "mapped_role": "reviewer",
+  "member_user_ids": ["user_001", "user_002"],
+  "attributes": {
+    "source": "scim"
+  }
+}
+```
+
+说明：
+
+- `scope_type` 支持 `global / tenant / team`
+- `mapped_role` 支持 `viewer / writer / reviewer / admin`
+- `scope_id` 省略时会按 `scope_type + tenant_id + team_id` 自动推导
+
+### `POST /iam/directory/sync`
+
+用途：批量同步目录用户与目录组，用于外部 IAM / IdP 定时回写。
+
+请求示例：
+
+```json
+{
+  "users": {
+    "user_001": {
+      "display_name": "Platform User"
+    }
+  },
+  "groups": {
+    "group_platform_admin": {
+      "display_name": "Platform Admins",
+      "scope_type": "team",
+      "mapped_role": "admin",
+      "member_user_ids": ["user_001"]
+    }
+  }
+}
+```
 
 ## 10. MCP 映射建议
 

@@ -1,10 +1,10 @@
 # AI Coding Knowledge & Memory MVP
 
-这是一个基于 `FastAPI + SQLAlchemy` 的 MVP / 生产化过渡版本实现，用来验证 `AI Coding 团队知识与记忆系统` 的核心链路。当前版本已经打通 `PostgreSQL + Alembic + 原生 pgvector/JWKS IAM` 主链路，并保留继续扩展到更大规模组织级能力的结构。
+这是一个基于 `FastAPI + SQLAlchemy` 的 MVP / 生产化过渡版本实现，用来验证 `AI Coding 团队知识与记忆系统` 的核心链路。当前版本已经打通 `PostgreSQL + Alembic + 原生 pgvector/JWKS IAM/SCIM 目录同步` 主链路，并保留继续扩展到更大规模组织级能力的结构。
 
 ## 当前定位
 
-- 当前版本定位为：`多租户请求隔离 + 平台共享/租户私有双层配置 + 原生 pgvector/IAM` 的过渡版
+- 当前版本定位为：`多租户请求隔离 + 平台共享/租户私有双层配置 + 原生 pgvector + 外部 IAM/目录同步` 的过渡版
 - 当前目标是：稳定验证采集、抽取、审核、检索、反馈、审计与评估闭环
 - `X-Tenant-Id`、`X-Team-Id`、`X-User-Id` 已用于会话、知识、提取任务、检索日志、审计和评估的请求级作用域隔离
 - `X-User-Role`、`AICODING_DEFAULT_USER_ROLE`、`AICODING_API_KEY_ROLES` 已用于 `viewer / writer / reviewer / admin` 四级权限裁剪
@@ -42,6 +42,7 @@
 - 持续 schema drift 校验
 - 按 `tenant/team` 收紧的知识、检索、提取任务与配置访问控制
 - 平台共享配置与租户私有 `repo/path` 配置双层数据模型
+- SCIM 风格目录用户/组同步与基于目录组的 tenant/team/role 授权补全
 
 ## 目录
 
@@ -56,6 +57,7 @@
 - `app/services/retrieval.py`：检索排序逻辑
 - `app/services/vector_store.py`：向量检索抽象层
 - `app/services/health.py`：健康检查服务
+- `app/services/directory.py`：目录同步与授权补全
 - `app/services/llm_validation.py`：外部 LLM 连通性验证
 - `alembic/`：数据库迁移骨架
 - `tests/test_http_e2e.py`：HTTP 级端到端测试
@@ -200,6 +202,8 @@ python3 -m uvicorn app.main:app --reload
 - `alembic/versions/20260326_0004_add_vector_index_entry.py`
 - `alembic/versions/20260326_0005_add_resource_acl.py`
 - `alembic/versions/20260326_0006_add_config_profile_ownership.py`
+- `alembic/versions/20260326_0007_enable_native_pgvector.py`
+- `alembic/versions/20260326_0008_add_directory_sync_tables.py`
 
 执行迁移：
 
@@ -412,6 +416,11 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - `POST /api/v1/feedback/context-pack`
 - `GET /api/v1/audit/logs`
 - `GET /api/v1/auth/identity`
+- `GET /api/v1/iam/directory/users`
+- `PUT /api/v1/iam/scim/users/{user_id}`
+- `GET /api/v1/iam/directory/groups`
+- `PUT /api/v1/iam/scim/groups/{group_id}`
+- `POST /api/v1/iam/directory/sync`
 - `GET /api/v1/evaluation/scenarios`
 - `POST /api/v1/evaluation/run`
 - `GET /api/v1/evaluation/runs`
@@ -441,6 +450,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - 团队上下文可额外管理本团队 `team` 与团队私有 `repo / path`
 - `PUT /config/profile/{profile_id}` 支持显式传入 `ownership_mode=shared|tenant|team` 控制 `repo/path` 配置归属
 - 启用 IAM Bearer JWT 后，`tenant/team/user/role` 可直接从外部 token claim 同步，并支持对 `X-Tenant-Id`、`X-Team-Id` 做授权范围校验
+- 目录同步接口可写入 `directory_user / directory_group / directory_group_membership`，并把目录组映射补充到 Bearer JWT 的 `allowed_tenant_ids / allowed_team_ids / user_role`
 - 当前内置角色能力为：`viewer` 只读、`writer` 可写会话/检索/反馈、`reviewer` 可审核知识与查看信号、`admin` 可变更配置/知识与执行评估
 
 ## 配套文件

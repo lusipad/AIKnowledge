@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import jwt
 
+from app.database import SessionLocal
+from app.services.directory import resolve_directory_access
 from app.settings import ALLOWED_USER_ROLES, AppSettings, load_settings
 
 
@@ -33,6 +35,7 @@ class AuthenticatedIdentity:
     team_id: str | None
     allowed_tenant_ids: tuple[str, ...]
     allowed_team_ids: tuple[str, ...]
+    directory_group_ids: tuple[str, ...]
     claims: dict
 
 
@@ -161,7 +164,39 @@ def verify_bearer_token(
         team_id=allowed_team_ids[0] if allowed_team_ids else None,
         allowed_tenant_ids=allowed_tenant_ids,
         allowed_team_ids=allowed_team_ids,
+        directory_group_ids=(),
         claims=claims,
+    )
+
+
+def merge_directory_identity(identity: AuthenticatedIdentity) -> AuthenticatedIdentity:
+    if not identity.user_id:
+        return identity
+
+    database = SessionLocal()
+    try:
+        resolved_access = resolve_directory_access(database, identity.user_id)
+    finally:
+        database.close()
+
+    if resolved_access.user_active is False:
+        raise IamAuthenticationError('IAM user is disabled by directory')
+
+    candidate_roles = ([identity.user_role] if identity.user_role else []) + list(resolved_access.directory_roles)
+    merged_role = max(candidate_roles, key=lambda item: ROLE_RANK.get(item, 0)) if candidate_roles else None
+    merged_tenant_ids = tuple(dict.fromkeys(list(identity.allowed_tenant_ids) + list(resolved_access.directory_tenant_ids)))
+    merged_team_ids = tuple(dict.fromkeys(list(identity.allowed_team_ids) + list(resolved_access.directory_team_ids)))
+
+    return AuthenticatedIdentity(
+        source=identity.source,
+        user_id=identity.user_id,
+        user_role=merged_role,
+        tenant_id=identity.tenant_id or (merged_tenant_ids[0] if merged_tenant_ids else None),
+        team_id=identity.team_id or (merged_team_ids[0] if merged_team_ids else None),
+        allowed_tenant_ids=merged_tenant_ids,
+        allowed_team_ids=merged_team_ids,
+        directory_group_ids=resolved_access.group_ids,
+        claims=identity.claims,
     )
 
 
@@ -171,6 +206,7 @@ def synchronize_identity_scope(
     requested_tenant_id: str | None,
     requested_team_id: str | None,
 ) -> AuthenticatedIdentity:
+    identity = merge_directory_identity(identity)
     active_tenant_id = identity.tenant_id
     if requested_tenant_id:
         if identity.allowed_tenant_ids and requested_tenant_id not in identity.allowed_tenant_ids:
@@ -195,5 +231,6 @@ def synchronize_identity_scope(
         team_id=active_team_id,
         allowed_tenant_ids=identity.allowed_tenant_ids,
         allowed_team_ids=identity.allowed_team_ids,
+        directory_group_ids=identity.directory_group_ids,
         claims=identity.claims,
     )

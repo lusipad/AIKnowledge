@@ -131,6 +131,21 @@ class AiKnowledgeClient:
     def get_evaluation_run(self, run_id: str) -> dict[str, Any]:
         return self.request('GET', f'/api/v1/evaluation/runs/{run_id}')
 
+    def upsert_directory_user(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.request('PUT', f'/api/v1/iam/scim/users/{user_id}', payload=payload)
+
+    def upsert_directory_group(self, group_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.request('PUT', f'/api/v1/iam/scim/groups/{group_id}', payload=payload)
+
+    def sync_directory(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.request('POST', '/api/v1/iam/directory/sync', payload=payload)
+
+    def list_directory_users(self) -> dict[str, Any]:
+        return self.request('GET', '/api/v1/iam/directory/users')
+
+    def list_directory_groups(self) -> dict[str, Any]:
+        return self.request('GET', '/api/v1/iam/directory/groups')
+
 
 def build_client_from_env() -> AiKnowledgeClient:
     base_url = os.getenv('AICODING_API_BASE_URL', 'http://127.0.0.1:8000')

@@ -126,6 +126,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.authenticated_team_id = identity.team_id
             request.state.allowed_tenant_ids = list(identity.allowed_tenant_ids)
             request.state.allowed_team_ids = list(identity.allowed_team_ids)
+            request.state.directory_group_ids = list(identity.directory_group_ids)
             request.state.authenticated_claims = identity.claims
             return await call_next(request)
 

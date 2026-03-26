@@ -124,3 +124,31 @@ class EvaluationRunRequest(BaseModel):
     event_prompt_summary: str | None = None
     event_result_summary: str | None = None
     query: str | None = None
+
+
+class DirectoryUserUpsertRequest(BaseModel):
+    tenant_id: str | None = None
+    team_id: str | None = None
+    external_ref: str | None = None
+    email: str | None = None
+    display_name: str | None = None
+    active: bool = True
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+
+class DirectoryGroupUpsertRequest(BaseModel):
+    tenant_id: str | None = None
+    team_id: str | None = None
+    external_ref: str | None = None
+    display_name: str
+    scope_type: str = 'team'
+    scope_id: str | None = None
+    mapped_role: str | None = None
+    active: bool = True
+    member_user_ids: list[str] = Field(default_factory=list)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+
+class DirectorySyncRequest(BaseModel):
+    users: dict[str, DirectoryUserUpsertRequest] = Field(default_factory=dict)
+    groups: dict[str, DirectoryGroupUpsertRequest] = Field(default_factory=dict)
