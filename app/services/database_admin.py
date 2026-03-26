@@ -55,10 +55,16 @@ def _serialize_schema_diffs(diffs: list[object]) -> list[str]:
     return [repr(diff) for diff in diffs]
 
 
-def _include_schema_object(object_, name, type_, reflected, compare_to) -> bool:
-    if type_ == 'table' and name == 'alembic_version':
-        return False
-    return True
+def _build_include_schema_object(dialect_name: str):
+    def include_schema_object(object_, name, type_, reflected, compare_to) -> bool:
+        del object_, reflected, compare_to
+        if type_ == 'table' and name == 'alembic_version':
+            return False
+        if dialect_name != 'postgresql' and type_ == 'index' and name == 'ix_vector_index_entry_vector_hnsw':
+            return False
+        return True
+
+    return include_schema_object
 
 
 def schema_drift_status(database_engine=engine, *, database_url: str | None = None) -> tuple[bool, dict]:
@@ -79,7 +85,7 @@ def schema_drift_status(database_engine=engine, *, database_url: str | None = No
     with database_engine.connect() as connection:
         migration_context = MigrationContext.configure(
             connection,
-            opts={'compare_type': True, 'include_object': _include_schema_object},
+            opts={'compare_type': True, 'include_object': _build_include_schema_object(connection.dialect.name)},
         )
         current_heads = sorted(migration_context.get_current_heads())
         diffs = compare_metadata(migration_context, Base.metadata)

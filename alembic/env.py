@@ -17,9 +17,19 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _include_object(object_, name, type_, reflected, compare_to):
+    del object_, reflected, compare_to
+    dialect_name = context.config.get_main_option('sqlalchemy.url').split(':', 1)[0]
+    if type_ == 'table' and name == 'alembic_version':
+        return False
+    if 'postgresql' not in dialect_name and type_ == 'index' and name == 'ix_vector_index_entry_vector_hnsw':
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     url = config.get_main_option('sqlalchemy.url')
-    context.configure(url=url, target_metadata=target_metadata, literal_binds=True, compare_type=True)
+    context.configure(url=url, target_metadata=target_metadata, literal_binds=True, compare_type=True, include_object=_include_object)
 
     with context.begin_transaction():
         context.run_migrations()
@@ -34,7 +44,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True, include_object=_include_object)
 
         with context.begin_transaction():
             context.run_migrations()

@@ -2,10 +2,25 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, Text, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, Text, String, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.settings import load_settings
+
+try:
+    from pgvector.sqlalchemy import Vector as PgVector
+except ImportError:  # pragma: no cover - optional dependency in non-pgvector environments
+    PgVector = None
+
+
+VECTOR_DIMENSIONS = load_settings().vector_dimensions
+
+
+def vector_storage_type():
+    if PgVector is None:
+        return JSON
+    return JSON().with_variant(PgVector(VECTOR_DIMENSIONS), 'postgresql')
 
 
 def utc_now() -> datetime:
@@ -176,6 +191,15 @@ class RetrievalResult(Base):
 
 class VectorIndexEntry(Base):
     __tablename__ = "vector_index_entry"
+    __table_args__ = (
+        Index(
+            'ix_vector_index_entry_vector_hnsw',
+            'vector',
+            postgresql_using='hnsw',
+            postgresql_ops={'vector': 'vector_cosine_ops'},
+            postgresql_with={'m': 16, 'ef_construction': 64},
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     document_id: Mapped[str] = mapped_column(String(160), nullable=False, unique=True, index=True)
@@ -188,7 +212,7 @@ class VectorIndexEntry(Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     embedding_model: Mapped[str] = mapped_column(String(128), nullable=False)
     source_text: Mapped[str] = mapped_column(Text, nullable=False)
-    vector: Mapped[list[float]] = mapped_column(JSON, default=list, nullable=False)
+    vector: Mapped[list[float]] = mapped_column(vector_storage_type(), default=list, nullable=False)
     document_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

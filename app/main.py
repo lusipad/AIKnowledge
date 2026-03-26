@@ -93,6 +93,7 @@ def healthz():
         'database': readiness_detail['database'],
         'schema': readiness_detail['schema'],
         'vector_backend': current_settings.vector_backend,
+        'vector_store': readiness_detail['vector_store'],
         'auth_enabled': current_settings.api_key_enabled,
         'llm': {
             'configured': current_settings.llm_configured,

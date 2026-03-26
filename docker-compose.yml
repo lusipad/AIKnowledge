@@ -1,7 +1,6 @@
-version: '3.9'
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: ai-coding-memory-postgres
     environment:
       POSTGRES_DB: aicoding_mvp
@@ -28,6 +27,7 @@ services:
     environment:
       AICODING_DB_URL: postgresql+psycopg://postgres:postgres@postgres:5432/aicoding_mvp
       AICODING_VECTOR_BACKEND: pgvector
+      AICODING_VECTOR_DIMENSIONS: 1536
     volumes:
       - ./runtime:/app/runtime
 

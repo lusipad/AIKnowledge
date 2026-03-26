@@ -43,6 +43,7 @@ class SecurityTestCase(unittest.TestCase):
         settings = load_settings()
         self.assertIn(settings.vector_backend, {'simple', 'keyword', 'simple-keyword', 'embedding', 'pgvector', 'postgres'})
         self.assertIn(settings.extraction_mode, {'sync', 'async'})
+        self.assertGreater(settings.vector_dimensions, 0)
 
     def test_load_settings_supports_multiple_api_keys(self):
         previous_api_key = os.environ.get('AICODING_API_KEY')

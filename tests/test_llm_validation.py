@@ -42,6 +42,7 @@ def _build_settings(**overrides) -> AppSettings:
         'embedding_base_url': 'https://example.com',
         'embedding_api_key': 'secret',
         'embedding_model': 'text-embedding-3-small',
+        'vector_dimensions': 1536,
         'embedding_path': '/v1/embeddings',
         'embedding_timeout_sec': 10,
         'llm_base_url': 'https://example.com',

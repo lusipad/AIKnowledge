@@ -7,12 +7,17 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-from sqlalchemy import delete, select
+from sqlalchemy import cast, delete, select
 from sqlalchemy.orm import Session
 
 from app.models import ConfigProfile, KnowledgeItem, VectorIndexEntry
 from app.settings import AppSettings, load_settings
 from app.utils import extract_keywords, to_text
+
+try:
+    from pgvector.sqlalchemy import Vector as PgVector
+except ImportError:  # pragma: no cover - optional dependency in non-pgvector environments
+    PgVector = None
 
 
 @dataclass
@@ -217,6 +222,8 @@ def build_config_vector_documents(profile: ConfigProfile) -> list[VectorDocument
                 metadata={
                     'entity_type': 'config_profile',
                     'entity_id': profile.profile_id,
+                    'tenant_id': profile.tenant_id,
+                    'team_id': profile.team_id,
                     'scope_type': profile.scope_type,
                     'scope_id': profile.scope_id,
                     'profile_id': profile.profile_id,
@@ -244,6 +251,12 @@ class PersistentPgVectorBackend(VectorBackend):
     @staticmethod
     def _cosine_similarity(left_vector: list[float], right_vector: list[float]) -> float:
         return EmbeddingVectorBackend._cosine_similarity(left_vector, right_vector)
+
+    @staticmethod
+    def _supports_native_pgvector(database: Session | None) -> bool:
+        if not database or not getattr(database, 'bind', None):
+            return False
+        return database.bind.dialect.name == 'postgresql'
 
     def _persist_documents(self, database: Session, documents: list[VectorDocument]) -> dict[str, list[float]]:
         if not self.embedding_backend:
@@ -299,6 +312,42 @@ class PersistentPgVectorBackend(VectorBackend):
             database.flush()
         return {document_id: entry.vector for document_id, entry in existing_entries.items()}
 
+    def _score_documents_with_native_pgvector(
+        self,
+        database: Session,
+        documents: list[VectorDocument],
+        query_vector: list[float],
+        *,
+        top_k: int | None = None,
+    ) -> list[VectorMatch]:
+        if PgVector is None:
+            raise ValueError('pgvector backend requires the pgvector package to be installed')
+        vector_column = cast(VectorIndexEntry.vector, PgVector(self.settings.vector_dimensions))
+        distance = vector_column.cosine_distance(query_vector)
+        statement = (
+            select(
+                VectorIndexEntry.document_id,
+                VectorIndexEntry.document_metadata,
+                distance.label('distance'),
+            )
+            .where(VectorIndexEntry.document_id.in_([document.document_id for document in documents]))
+            .order_by(distance.asc())
+        )
+        if top_k is not None:
+            statement = statement.limit(top_k)
+
+        matches: list[VectorMatch] = []
+        for document_id, metadata, distance_value in database.execute(statement).all():
+            normalized_score = round(max(0.0, 1 - float(distance_value or 0.0)), 6)
+            matches.append(
+                VectorMatch(
+                    document_id=document_id,
+                    score=normalized_score,
+                    metadata=metadata or {},
+                )
+            )
+        return matches
+
     def score_documents(
         self,
         query: str,
@@ -306,7 +355,7 @@ class PersistentPgVectorBackend(VectorBackend):
         top_k: int | None = None,
         *,
         database: Session | None = None,
-    ) -> list[VectorMatch]:
+        ) -> list[VectorMatch]:
         if not documents:
             return []
         if not database or not self.embedding_backend:
@@ -316,6 +365,14 @@ class PersistentPgVectorBackend(VectorBackend):
             query_vector = self.embedding_backend._request_embeddings([query])[0]
         except EmbeddingGatewayError:
             return self.fallback_backend.score_documents(query, documents, top_k=top_k)
+
+        if self._supports_native_pgvector(database):
+            return self._score_documents_with_native_pgvector(
+                database,
+                documents,
+                query_vector,
+                top_k=top_k,
+            )
 
         matches = [
             VectorMatch(
@@ -378,5 +435,7 @@ def create_vector_backend(*, settings: AppSettings | None = None, urlopen=None) 
     if backend_name in {'embedding'}:
         return EmbeddingVectorBackend(app_settings, urlopen=urlopen)
     if backend_name in {'pgvector', 'postgres'}:
+        if PgVector is None:
+            raise ValueError('pgvector backend requires the pgvector package to be installed')
         return PersistentPgVectorBackend(app_settings, urlopen=urlopen)
     return SimpleKeywordVectorBackend()

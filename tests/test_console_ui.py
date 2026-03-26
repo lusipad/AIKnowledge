@@ -42,6 +42,7 @@ class ConsoleUiTestCase(unittest.TestCase):
         self.assertIn(ready_response.json()['status'], {'ok', 'degraded'})
         self.assertIn('schema', ready_response.json())
         self.assertIn('ok', ready_response.json()['schema'])
+        self.assertIn('vector_store', ready_response.json())
 
 
 class ConsoleUiWithApiKeyTestCase(unittest.TestCase):

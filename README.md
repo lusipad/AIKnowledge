@@ -115,6 +115,7 @@ make init-db
 ```bash
 export AICODING_DB_URL='sqlite:///./runtime/dev.db'
 export AICODING_VECTOR_BACKEND='simple'
+export AICODING_VECTOR_DIMENSIONS='1536'
 export AICODING_EXTRACTION_MODE='sync'
 export AICODING_EMBEDDING_BASE_URL='https://api.openai.com'
 export AICODING_EMBEDDING_API_KEY='replace-with-real-secret'
@@ -158,11 +159,12 @@ python3 scripts/verify_llm.py --prompt "Reply with ok only."
 ```bash
 export AICODING_DB_URL='postgresql+psycopg://postgres:postgres@localhost:5432/aicoding_mvp'
 export AICODING_VECTOR_BACKEND='pgvector'
+export AICODING_VECTOR_DIMENSIONS='1536'
 export AICODING_API_KEY='replace-with-real-secret'
 python3 -m uvicorn app.main:app --reload
 ```
 
-说明：当前 `pgvector` / `postgres` 后端会把知识与配置规则的 embedding 持久化到数据库 `vector_index_entry` 表，并在检索时复用落库向量；如 embedding 网关不可用，会自动回退到简单关键词向量打分。
+说明：当前 `pgvector` / `postgres` 后端会把知识与配置规则的 embedding 持久化到数据库 `vector_index_entry` 表，在 PostgreSQL 上使用原生 `vector(AICODING_VECTOR_DIMENSIONS)` 列和 HNSW cosine 索引，并在检索时直接复用数据库向量排序；如 embedding 网关不可用，会自动回退到简单关键词向量打分。
 
 ## Embedding 向量后端
 
@@ -302,6 +304,7 @@ docker compose up --build
 - 数据库连通性
 - schema 是否与 Alembic head 一致
 - 当前向量后端
+- `pgvector` 原生向量存储状态、extension 安装状态与向量维度
 - 是否启用 API Key
 - 是否已配置外部 LLM 验证
 - 当前版本
@@ -443,7 +446,6 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 ## 当前限制
 
-- `pgvector` 后端已支持数据库持久化向量层，但当前仍使用跨数据库兼容的 JSON 向量存储，尚未引入 PostgreSQL 原生 `vector` 列与 ANN 索引优化
 - 已提供 `viewer / writer / reviewer / admin` 四级权限控制，以及知识 / 配置资源级 ACL；但尚未接入外部 IAM、组织级角色同步和跨系统身份治理
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast

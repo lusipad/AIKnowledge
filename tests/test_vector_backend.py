@@ -1,7 +1,9 @@
 import json
 import unittest
 
-from sqlalchemy import create_engine, select
+from sqlalchemy.dialects import postgresql
+from sqlalchemy import cast, create_engine, select
+from sqlalchemy.schema import CreateIndex, CreateTable
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -9,6 +11,7 @@ from app.database import Base
 from app.models import ConfigProfile, KnowledgeItem, VectorIndexEntry
 from app.services.vector_store import (
     EmbeddingVectorBackend,
+    PgVector,
     PersistentPgVectorBackend,
     VectorDocument,
     build_config_vector_documents,
@@ -67,6 +70,7 @@ def _build_settings(**overrides) -> AppSettings:
         'embedding_base_url': 'https://example.com',
         'embedding_api_key': 'secret',
         'embedding_model': 'text-embedding-3-small',
+        'vector_dimensions': 3,
         'embedding_path': '/v1/embeddings',
         'embedding_timeout_sec': 10,
         'llm_base_url': None,
@@ -103,6 +107,20 @@ class VectorBackendTestCase(unittest.TestCase):
         )
         self.assertEqual(matches[0].document_id, 'doc_1')
         self.assertGreater(matches[0].score, matches[1].score)
+
+    def test_vector_index_entry_compiles_to_native_pgvector_for_postgresql(self):
+        table_sql = str(CreateTable(VectorIndexEntry.__table__).compile(dialect=postgresql.dialect()))
+        index = next(index for index in VectorIndexEntry.__table__.indexes if index.name == 'ix_vector_index_entry_vector_hnsw')
+        index_sql = str(CreateIndex(index).compile(dialect=postgresql.dialect()))
+        distance_sql = str(
+            select(cast(VectorIndexEntry.vector, PgVector(1536)).cosine_distance([0.1, 0.2, 0.3])).compile(
+                dialect=postgresql.dialect(),
+            )
+        )
+
+        self.assertIn('VECTOR(1536)', table_sql)
+        self.assertIn('USING hnsw', index_sql)
+        self.assertIn('<=>', distance_sql)
 
 
 class PersistentVectorBackendTestCase(unittest.TestCase):

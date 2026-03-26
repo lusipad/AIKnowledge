@@ -2,7 +2,13 @@ import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
+from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+try:
+    from pgvector.psycopg import register_vector
+except ImportError:  # pragma: no cover - optional dependency for non-pgvector environments
+    register_vector = None
 
 
 DEFAULT_SQLITE_URL = 'sqlite:///./aicoding_mvp.db'
@@ -53,7 +59,17 @@ def build_engine(database_url: str):
         max_overflow = int(os.getenv('AICODING_DB_MAX_OVERFLOW', '10'))
         engine_kwargs['pool_size'] = pool_size
         engine_kwargs['max_overflow'] = max_overflow
-    return create_engine(normalized_url, **engine_kwargs)
+    built_engine = create_engine(normalized_url, **engine_kwargs)
+    if normalized_url.startswith('postgresql') and register_vector is not None:
+        event.listen(built_engine, 'connect', _register_pgvector_types)
+    return built_engine
+
+
+def _register_pgvector_types(dbapi_connection, connection_record) -> None:  # pragma: no cover - exercised in postgres runtime
+    del connection_record
+    if register_vector is None:
+        return
+    register_vector(dbapi_connection)
 
 
 engine = build_engine(DATABASE_URL)
