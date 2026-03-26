@@ -37,10 +37,29 @@ class AppSettings:
     llm_timeout_sec: int
     default_user_role: str = 'admin'
     api_key_roles: dict[str, str] = field(default_factory=dict)
+    iam_jwks_url: str | None = None
+    iam_jwks_json: str | None = None
+    iam_issuer: str | None = None
+    iam_audience: str | None = None
+    iam_user_claim: str = 'sub'
+    iam_tenant_claim: str = 'tenant_id'
+    iam_tenants_claim: str = 'tenant_ids'
+    iam_team_claim: str = 'team_id'
+    iam_teams_claim: str = 'team_ids'
+    iam_role_claim: str = 'roles'
+    iam_role_mapping: dict[str, str] = field(default_factory=dict)
 
     @property
     def api_key_enabled(self) -> bool:
         return bool(self.api_key)
+
+    @property
+    def iam_enabled(self) -> bool:
+        return bool(self.iam_jwks_url or self.iam_jwks_json)
+
+    @property
+    def auth_enabled(self) -> bool:
+        return self.api_key_enabled or self.iam_enabled
 
     @property
     def configured_api_keys(self) -> tuple[str, ...]:
@@ -58,7 +77,7 @@ class AppSettings:
         return bool(self.embedding_base_url and self.embedding_api_key and self.embedding_model)
 
 
-def _parse_api_key_roles(raw_value: str | None) -> dict[str, str]:
+def _parse_role_mapping(raw_value: str | None) -> dict[str, str]:
     if not raw_value:
         return {}
     mappings: dict[str, str] = {}
@@ -95,7 +114,7 @@ def load_settings() -> AppSettings:
         extraction_mode=extraction_mode,
         api_key=(os.getenv('AICODING_API_KEYS') or os.getenv('AICODING_API_KEY') or '').strip() or None,
         default_user_role=default_user_role,
-        api_key_roles=_parse_api_key_roles(os.getenv('AICODING_API_KEY_ROLES')),
+        api_key_roles=_parse_role_mapping(os.getenv('AICODING_API_KEY_ROLES')),
         env=os.getenv('AICODING_ENV', 'dev'),
         embedding_base_url=(os.getenv('AICODING_EMBEDDING_BASE_URL') or '').rstrip('/') or None,
         embedding_api_key=os.getenv('AICODING_EMBEDDING_API_KEY') or None,
@@ -108,4 +127,15 @@ def load_settings() -> AppSettings:
         llm_model=os.getenv('AICODING_LLM_MODEL') or None,
         llm_chat_path=_normalize_llm_chat_path(os.getenv('AICODING_LLM_CHAT_PATH')),
         llm_timeout_sec=max(1, int(os.getenv('AICODING_LLM_TIMEOUT_SEC', '30'))),
+        iam_jwks_url=(os.getenv('AICODING_IAM_JWKS_URL') or '').strip() or None,
+        iam_jwks_json=(os.getenv('AICODING_IAM_JWKS_JSON') or '').strip() or None,
+        iam_issuer=(os.getenv('AICODING_IAM_ISSUER') or '').strip() or None,
+        iam_audience=(os.getenv('AICODING_IAM_AUDIENCE') or '').strip() or None,
+        iam_user_claim=(os.getenv('AICODING_IAM_USER_CLAIM') or 'sub').strip() or 'sub',
+        iam_tenant_claim=(os.getenv('AICODING_IAM_TENANT_CLAIM') or 'tenant_id').strip() or 'tenant_id',
+        iam_tenants_claim=(os.getenv('AICODING_IAM_TENANTS_CLAIM') or 'tenant_ids').strip() or 'tenant_ids',
+        iam_team_claim=(os.getenv('AICODING_IAM_TEAM_CLAIM') or 'team_id').strip() or 'team_id',
+        iam_teams_claim=(os.getenv('AICODING_IAM_TEAMS_CLAIM') or 'team_ids').strip() or 'team_ids',
+        iam_role_claim=(os.getenv('AICODING_IAM_ROLE_CLAIM') or 'roles').strip() or 'roles',
+        iam_role_mapping=_parse_role_mapping(os.getenv('AICODING_IAM_ROLE_MAPPING')),
     )

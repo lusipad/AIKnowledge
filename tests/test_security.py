@@ -74,6 +74,26 @@ class SecurityTestCase(unittest.TestCase):
                 os.environ['AICODING_API_KEY_ROLES'] = previous_role_mapping
         self.assertEqual(settings.api_key_roles, {'alpha': 'viewer', 'beta': 'writer', 'gamma': 'admin'})
 
+    def test_load_settings_supports_iam_configuration(self):
+        previous_jwks = os.environ.get('AICODING_IAM_JWKS_JSON')
+        previous_mapping = os.environ.get('AICODING_IAM_ROLE_MAPPING')
+        os.environ['AICODING_IAM_JWKS_JSON'] = '{"keys":[]}'
+        os.environ['AICODING_IAM_ROLE_MAPPING'] = 'repo_writer:writer,repo_admin:admin'
+        try:
+            settings = load_settings()
+        finally:
+            if previous_jwks is None:
+                os.environ.pop('AICODING_IAM_JWKS_JSON', None)
+            else:
+                os.environ['AICODING_IAM_JWKS_JSON'] = previous_jwks
+            if previous_mapping is None:
+                os.environ.pop('AICODING_IAM_ROLE_MAPPING', None)
+            else:
+                os.environ['AICODING_IAM_ROLE_MAPPING'] = previous_mapping
+        self.assertTrue(settings.iam_enabled)
+        self.assertTrue(settings.auth_enabled)
+        self.assertEqual(settings.iam_role_mapping, {'repo_writer': 'writer', 'repo_admin': 'admin'})
+
     def test_resolve_request_role_prefers_authenticated_role(self):
         request = Request(
             {

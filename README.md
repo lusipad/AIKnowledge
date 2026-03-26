@@ -123,6 +123,10 @@ export AICODING_EMBEDDING_MODEL='text-embedding-3-small'
 export AICODING_API_KEY='your-secret'
 export AICODING_API_KEY_ROLES='your-secret:admin,readonly-key:viewer'
 export AICODING_DEFAULT_USER_ROLE='admin'
+export AICODING_IAM_JWKS_URL='https://iam.example.com/.well-known/jwks.json'
+export AICODING_IAM_ISSUER='https://iam.example.com/'
+export AICODING_IAM_AUDIENCE='aiknowledge'
+export AICODING_IAM_ROLE_MAPPING='repo_viewer:viewer,repo_writer:writer,repo_reviewer:reviewer,repo_admin:admin'
 export AICODING_API_BASE_URL='http://127.0.0.1:8000'
 export AICODING_LLM_BASE_URL='https://api.openai.com'
 export AICODING_LLM_API_KEY='replace-with-real-secret'
@@ -140,9 +144,13 @@ export AICODING_LLM_MODEL='deepseek-chat'
 python3 scripts/verify_llm.py --prompt "Reply with ok only."
 ```
 
-启用 `AICODING_API_KEY` 后，除 `/`、`/healthz`、`/docs`、`/openapi.json` 外，其余接口都需要：
+启用 `AICODING_API_KEY` 或 `AICODING_IAM_JWKS_*` 后，除 `/`、`/healthz`、`/docs`、`/openapi.json` 外，其余接口都需要认证：
 
 也可使用 `AICODING_API_KEYS='key-a,key-b,key-c'` 配置多个可接受的 API Key。
+
+启用外部 IAM 后，也可直接透传：
+
+- `Authorization: Bearer <jwt>`
 
 以下路径仍保持免鉴权，便于探针和 console 使用：
 
@@ -403,6 +411,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - `POST /api/v1/feedback/knowledge`
 - `POST /api/v1/feedback/context-pack`
 - `GET /api/v1/audit/logs`
+- `GET /api/v1/auth/identity`
 - `GET /api/v1/evaluation/scenarios`
 - `POST /api/v1/evaluation/run`
 - `GET /api/v1/evaluation/runs`
@@ -431,6 +440,7 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 - 租户上下文可管理本租户 `tenant` 与租户私有 `repo / path`
 - 团队上下文可额外管理本团队 `team` 与团队私有 `repo / path`
 - `PUT /config/profile/{profile_id}` 支持显式传入 `ownership_mode=shared|tenant|team` 控制 `repo/path` 配置归属
+- 启用 IAM Bearer JWT 后，`tenant/team/user/role` 可直接从外部 token claim 同步，并支持对 `X-Tenant-Id`、`X-Team-Id` 做授权范围校验
 - 当前内置角色能力为：`viewer` 只读、`writer` 可写会话/检索/反馈、`reviewer` 可审核知识与查看信号、`admin` 可变更配置/知识与执行评估
 
 ## 配套文件
@@ -446,6 +456,5 @@ python3 scripts/run_extract_worker.py --loop --poll-sec 2
 
 ## 当前限制
 
-- 已提供 `viewer / writer / reviewer / admin` 四级权限控制，以及知识 / 配置资源级 ACL；但尚未接入外部 IAM、组织级角色同步和跨系统身份治理
 - 外部 LLM 验证默认按 OpenAI 兼容 `chat/completions` 协议调用，非兼容网关需调整路径或请求格式
 - 服务启动前需要先执行 `make init-db` 或 `make migrate`，否则应用会在启动阶段 fail-fast

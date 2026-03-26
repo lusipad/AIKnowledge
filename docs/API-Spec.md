@@ -24,8 +24,10 @@ API 设计目标：
 
 ### 2.2 认证
 
-- 推荐：`Authorization: Bearer <token>`
-- 可选：通过 `AICODING_API_KEY_ROLES` 为 API Key 绑定角色，或由客户端显式传递 `X-User-Role`
+- 支持：`Authorization: Bearer <jwt>` 对接外部 IAM / OIDC / 自建 JWKS
+- 支持：`X-API-Key` 或 `Authorization: Bearer <api-key>` 作为平台内部 API Key
+- 可通过 `AICODING_API_KEY_ROLES` 为 API Key 绑定角色
+- 可通过 `AICODING_IAM_ROLE_MAPPING` 把外部 IAM 角色映射到内部 `viewer / writer / reviewer / admin`
 
 ### 2.3 公共请求头
 
@@ -34,6 +36,11 @@ API 设计目标：
 - `X-User-Role`
 - `X-Client-Type`
 - `X-Request-Id`
+
+说明：
+
+- 启用 IAM Bearer JWT 后，`X-Tenant-Id`、`X-Team-Id` 可用于在 token 已授予的组织/团队列表中显式切换当前作用域
+- 如果请求头声明了未获 token 授权的 `tenant/team`，接口返回 `403`
 
 ### 2.4 通用响应结构
 
@@ -406,6 +413,12 @@ API 设计目标：
 ### `GET /audit/logs`
 
 用途：查看谁在什么范围下使用了哪些知识。
+
+## 9.5 查询当前身份
+
+### `GET /auth/identity`
+
+用途：返回当前请求实际生效的认证来源、用户、角色以及 IAM 同步的 tenant/team 范围。
 
 ## 10. MCP 映射建议
 

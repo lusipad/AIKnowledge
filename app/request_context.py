@@ -30,9 +30,9 @@ def _build_request_context(request: Request) -> RequestContext:
     settings = load_settings()
     return RequestContext(
         request_id=request.headers.get('X-Request-Id') or f'req_{uuid.uuid4().hex[:12]}',
-        tenant_id=request.headers.get('X-Tenant-Id') or None,
-        team_id=request.headers.get('X-Team-Id') or None,
-        user_id=request.headers.get('X-User-Id') or None,
+        tenant_id=getattr(request.state, 'authenticated_tenant_id', None) or request.headers.get('X-Tenant-Id') or None,
+        team_id=getattr(request.state, 'authenticated_team_id', None) or request.headers.get('X-Team-Id') or None,
+        user_id=getattr(request.state, 'authenticated_user_id', None) or request.headers.get('X-User-Id') or None,
         client_type=request.headers.get('X-Client-Type') or None,
         user_role=getattr(request.state, 'authenticated_role', None)
         or (request.headers.get('X-User-Role') or '').strip().lower()

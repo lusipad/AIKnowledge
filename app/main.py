@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.database import SessionLocal, engine
 from app.request_context import RequestContextMiddleware
+from app.routers.auth import router as auth_router
 from app.routers.audit import router as audit_router
 from app.routers.config import router as config_router
 from app.routers.context import router as context_router
@@ -16,7 +17,7 @@ from app.routers.llm import router as llm_router
 from app.routers.retrieval import router as retrieval_router
 from app.routers.sessions import router as sessions_router
 from app.routers.ui import router as ui_router
-from app.security import ApiKeyMiddleware
+from app.security import AuthenticationMiddleware
 from app.services.bootstrap import seed_default_profiles
 from app.services.database_admin import ensure_database_ready
 from app.services.health import database_readiness_status
@@ -48,13 +49,15 @@ app = FastAPI(
 )
 
 app.add_middleware(RequestContextMiddleware)
-if settings.api_key_enabled:
+if settings.auth_enabled:
     app.add_middleware(
-        ApiKeyMiddleware,
+        AuthenticationMiddleware,
         api_keys=settings.configured_api_keys,
         api_key_roles=settings.api_key_roles,
+        settings=settings,
     )
 
+app.include_router(auth_router)
 app.include_router(sessions_router)
 app.include_router(context_router)
 app.include_router(knowledge_router)
@@ -78,7 +81,7 @@ def root():
         'console': '/console',
         'version': current_settings.app_version,
         'env': current_settings.env,
-        'auth_enabled': current_settings.api_key_enabled,
+        'auth_enabled': current_settings.auth_enabled,
         'vector_backend': current_settings.vector_backend,
         'llm_configured': current_settings.llm_configured,
     }
@@ -94,7 +97,13 @@ def healthz():
         'schema': readiness_detail['schema'],
         'vector_backend': current_settings.vector_backend,
         'vector_store': readiness_detail['vector_store'],
-        'auth_enabled': current_settings.api_key_enabled,
+        'auth_enabled': current_settings.auth_enabled,
+        'auth': {
+            'api_key_enabled': current_settings.api_key_enabled,
+            'iam_enabled': current_settings.iam_enabled,
+            'issuer': current_settings.iam_issuer,
+            'audience': current_settings.iam_audience,
+        },
         'llm': {
             'configured': current_settings.llm_configured,
             'model': current_settings.llm_model,
