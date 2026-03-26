@@ -29,6 +29,7 @@
 - 本地 HTTP 客户端与 demo 链路
 - 浏览器控制台与一键真实场景演示
 - 内建评估框架、可视化自评面板与历史评估记录
+- 检索 benchmark / 压测脚本，支持并发、warmup、P50/P95/P99 统计与数据集输入
 - 检索质量约束：生成知识前排优先、配置规则数量受控、摘要与查询保持相关
 - 自动化端到端测试
 - Docker 部署文件与 demo 脚本
@@ -73,6 +74,7 @@
 - `scripts/check_schema_drift.py`：数据库 schema drift 校验脚本
 - `scripts/run_extract_worker.py`：抽取任务 worker 脚本
 - `scripts/evaluate_system.py`：通过 HTTP 触发系统评估并输出 Markdown / JSON 报告
+- `scripts/benchmark_retrieval.py`：检索 benchmark / 压测脚本
 - `app/static/console/`：浏览器控制台静态前端
 - `app/routers/ui.py`：控制台路由与 favicon
 - `app/routers/evaluation.py`：评估接口
@@ -288,6 +290,41 @@ python3 scripts/evaluate_system.py --format json --output runtime/evaluation.jso
 - 最近一次评估历史，可在控制台和 API 中查看
 
 也可以通过浏览器控制台中的“运行系统评估”按钮触发。
+
+## 检索 Benchmark
+
+如果服务已启动，可以直接执行：
+
+```bash
+make benchmark
+```
+
+或：
+
+```bash
+python3 scripts/benchmark_retrieval.py \
+  --repo-id demo-repo \
+  --branch-name feature/benchmark \
+  --query "为订单风控增加渠道黑名单校验与回归检查" \
+  --file-path src/order/risk/check.ts \
+  --iterations 10 \
+  --warmup 2 \
+  --concurrency 4 \
+  --format markdown
+```
+
+也支持通过数据集文件批量执行：
+
+```bash
+python3 scripts/benchmark_retrieval.py --dataset runtime/retrieval-benchmark.json --format json --output runtime/benchmark.json
+```
+
+输出内容包括：
+
+- benchmark 请求总数、成功率、吞吐
+- `avg / p50 / p95 / p99 / max` 时延
+- 每个 case 的独立统计
+- 每次请求的成功/失败明细
 
 ## Docker 启动
 

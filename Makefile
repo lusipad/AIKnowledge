@@ -22,6 +22,9 @@ verify-llm:
 evaluate:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/evaluate_system.py
 
+benchmark:
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/benchmark_retrieval.py
+
 check-schema:
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_schema_drift.py
 

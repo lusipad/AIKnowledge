@@ -936,6 +936,11 @@ AI 使用知识
 - 注入结果来源于哪些原始对象。
 - 是否触达敏感范围。
 
+当前实现补充：
+
+- 已提供 `scripts/evaluate_system.py` 做系统级评估。
+- 已提供 `scripts/benchmark_retrieval.py` 做检索压测，输出 `avg / p50 / p95 / p99 / max` 与吞吐统计。
+
 ## 14. 非功能设计
 
 ## 14.1 性能目标
